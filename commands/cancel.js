@@ -6,7 +6,13 @@ const { cancelledEmbed, setupAgainRow } = require('../gameMessage');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('cancel')
-    .setDescription("Cancel tonight's game night (clears the answer and prompt)."),
+    .setDescription("Cancel tonight's game night (clears the answer and prompt).")
+    .addStringOption((option) =>
+      option
+        .setName('reason')
+        .setDescription('Optional reason why tonight is cancelled')
+        .setRequired(false),
+    ),
 
   /**
    * Clears tonight's record, but ONLY for tonight's creator or a server admin.
@@ -25,6 +31,7 @@ module.exports = {
 
     const date = todayKey();
     const row = db.get(guildId, date);
+    const reason = interaction.options.getString('reason');
 
     if (!row) {
       await interaction.reply({
@@ -47,6 +54,10 @@ module.exports = {
       return;
     }
 
+    // Check existing attendees before clearing
+    const attendees = db.getAttendees(guildId, date);
+    const mentions = attendees.map((a) => `<@${a.user_id}>`).filter((m) => m !== `<@${interaction.user.id}>`);
+
     // Mark the live message as cancelled (if we can still find it).
     let marked = false;
     if (row.message_id && row.channel_id) {
@@ -54,10 +65,14 @@ module.exports = {
         const channel = await interaction.client.channels.fetch(row.channel_id);
         if (channel?.isTextBased()) {
           const msg = await channel.messages.fetch(row.message_id);
+          const alertText = mentions.length > 0
+            ? `⚠️ **Game Night Cancelled** ${mentions.join(' ')}${reason ? `\n> 💬 *${reason}*` : ''}`
+            : (reason ? `⚠️ **Game Night Cancelled**\n> 💬 *${reason}*` : '');
+
           await msg.edit({
-            embeds: [cancelledEmbed()],
-            components: [setupAgainRow()],
-            content: '',
+            embeds: [cancelledEmbed(interaction.user, attendees, reason)],
+            components: [setupAgainRow(attendees.length > 0)],
+            content: alertText,
           });
           marked = true;
         }
@@ -70,9 +85,10 @@ module.exports = {
 
     await interaction.reply({
       content: marked
-        ? '🎮 Cancelled tonight\'s game night. The message is marked — click **"Set up again"** or run **/tonight** to start fresh.'
-        : '🎮 Cancelled tonight\'s game night. Run **/tonight** to start fresh.',
+        ? `🎮 Cancelled tonight's game night${reason ? ` (*"${reason}"*)` : ''}. The squad was notified — anyone can click **"Take Over as Host"** to restore it.`
+        : `🎮 Cancelled tonight's game night${reason ? ` (*"${reason}"*)` : ''}. Run **/tonight** to start fresh.`,
       ephemeral: true,
     });
   },
 };
+

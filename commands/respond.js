@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const db = require('../db');
-const { todayKey } = require('../utils');
+const { todayKey, formatUserTimeInput } = require('../utils');
 const {
   confirmedEmbed,
   notPlayingEmbed,
@@ -27,7 +27,7 @@ module.exports = {
     .addStringOption((option) =>
       option
         .setName('time')
-        .setDescription('Optional start or arrival time (e.g. 9:00 PM, 9:30 PM)')
+        .setDescription('Optional start or arrival time (e.g. 9:30 PM, 930, +15m)')
         .setRequired(false),
     ),
 
@@ -42,13 +42,14 @@ module.exports = {
 
     const date = todayKey();
     const status = interaction.options.getString('status');
-    const timeInput = interaction.options.getString('time');
+    const rawTime = interaction.options.getString('time');
+    const formattedTime = rawTime ? formatUserTimeInput(rawTime, date) : null;
     const user = { id: String(interaction.user.id), name: interaction.user.username };
 
     let row = db.get(guildId, date);
 
     if (status === 'yes') {
-      const startTime = timeInput || (row && row.time) || '9:00 PM';
+      const startTime = formattedTime || (row && row.time) || '9:00 PM';
       db.ensureCreator(guildId, date, user);
       db.setAnswer(guildId, date, {
         playing: 1,
@@ -72,7 +73,7 @@ module.exports = {
 
     if (status === 'join') {
       if (!row || row.playing !== 1) {
-        const startTime = timeInput || '9:00 PM';
+        const startTime = formattedTime || '9:00 PM';
         db.ensureCreator(guildId, date, user);
         db.setAnswer(guildId, date, {
           playing: 1,
@@ -86,7 +87,7 @@ module.exports = {
           time_: startTime,
         });
       } else {
-        const joinTime = timeInput || row.time || 'Anytime';
+        const joinTime = formattedTime || row.time || 'On Time';
         db.setAttendee(guildId, date, {
           user_id: user.id,
           user_name: user.name,

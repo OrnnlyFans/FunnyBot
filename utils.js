@@ -98,4 +98,71 @@ function parseTimeString(timeStr, dateKey = todayKey()) {
   return isNaN(dateObj.getTime()) ? null : dateObj;
 }
 
-module.exports = { TZ, todayKey, formatTodayLong, manilaNow, parseTimeString };
+/**
+ * Automatically formats free-form user time inputs (e.g. "930", "9.30", "9:30", "10", "+15m")
+ * into a clean standard format like "9:30 PM".
+ * @param {string} raw
+ * @param {string} [dateKey] default = todayKey()
+ * @returns {string|null}
+ */
+function formatUserTimeInput(raw, dateKey = todayKey()) {
+  if (!raw) return null;
+  let str = String(raw).trim();
+  if (!str) return null;
+
+  // Relative offset: "+15", "+30m", "in 20m"
+  const relMatch = str.match(/^(?:\+|in\s*)(\d+)\s*(?:m|min|mins|minutes)?$/i);
+  if (relMatch) {
+    const mins = parseInt(relMatch[1], 10);
+    const target = new Date(Date.now() + mins * 60000);
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: TZ,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(target);
+  }
+
+  // Replace dots with colons
+  str = str.replace('.', ':');
+
+  // Match 3 or 4 digit numbers without colons: "930", "0930", "1030", "2130"
+  const digitsMatch = str.match(/^(\d{1,2})(\d{2})\s*(am|pm)?$/i);
+  if (digitsMatch) {
+    let h = parseInt(digitsMatch[1], 10);
+    const m = parseInt(digitsMatch[2], 10);
+    const meridian = digitsMatch[3]?.toLowerCase();
+
+    if (m >= 0 && m < 60) {
+      if (meridian === 'pm' && h < 12) h += 12;
+      if (meridian === 'am' && h === 12) h = 0;
+      if (!meridian && h >= 1 && h <= 11) h += 12;
+
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+      const displayMeridian = h >= 12 ? 'PM' : 'AM';
+      return `${displayH}:${String(m).padStart(2, '0')} ${displayMeridian}`;
+    }
+  }
+
+  // Match standard forms: "9:30", "9:30 PM", "9 PM", "9"
+  const stdMatch = str.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (stdMatch) {
+    let h = parseInt(stdMatch[1], 10);
+    const m = stdMatch[2] ? parseInt(stdMatch[2], 10) : 0;
+    const meridian = stdMatch[3]?.toLowerCase();
+
+    if (h >= 0 && h <= 24 && m >= 0 && m < 60) {
+      if (meridian === 'pm' && h < 12) h += 12;
+      if (meridian === 'am' && h === 12) h = 0;
+      if (!meridian && h >= 1 && h <= 11) h += 12;
+
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+      const displayMeridian = h >= 12 ? 'PM' : 'AM';
+      return `${displayH}:${String(m).padStart(2, '0')} ${displayMeridian}`;
+    }
+  }
+
+  return str;
+}
+
+module.exports = { TZ, todayKey, formatTodayLong, manilaNow, parseTimeString, formatUserTimeInput };

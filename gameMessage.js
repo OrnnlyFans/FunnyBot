@@ -102,13 +102,29 @@ function notPlayingEmbed(setter) {
     .setFooter({ text: 'Run /status for details.' });
 }
 
-/** Shown on the (now stale) message after /cancel. */
-function cancelledEmbed() {
-  return new EmbedBuilder()
+/** Shown on the message after /cancel, with option to take over as host. */
+function cancelledEmbed(cancelledBy, attendees = [], reason = null) {
+  const embed = new EmbedBuilder()
     .setColor(COLORS.neutral)
-    .setTitle('🎮 TONIGHT')
-    .setDescription('…_game night cleared for tonight._')
-    .setFooter({ text: 'Run /tonight to start fresh, or click "Set up again" below.' });
+    .setTitle('🎮 TONIGHT — CANCELLED')
+    .setDescription(
+      cancelledBy
+        ? `⚠️ Tonight's game was cancelled by ${setterLine(cancelledBy)}.`
+        : '…_game night cleared for tonight._',
+    );
+  if (reason) {
+    embed.addFields({ name: '💬 Reason', value: reason });
+  }
+  if (attendees.length > 0) {
+    embed.addFields({
+      name: '👥 Previous Squad',
+      value: participantsText(attendees),
+    });
+  }
+  embed.setFooter({
+    text: 'Want to keep the game going? Click "Take Over as Host" or "Set up again" below.',
+  });
+  return embed;
 }
 
 /** /status output. Shows the yes/no, host time, and the player roster. */
@@ -198,14 +214,24 @@ function rosterRow() {
   );
 }
 
-/** A "re-open tonight" button for the cancelled message. */
-function setupAgainRow() {
-  return new ActionRowBuilder().addComponents(
+/** Buttons shown on a cancelled message: Take Over or Set Up Again. */
+function setupAgainRow(hasPreviousAttendees = false) {
+  const row = new ActionRowBuilder();
+  if (hasPreviousAttendees) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId('takeover_host')
+        .setLabel('👑 Take Over as Host')
+        .setStyle(ButtonStyle.Success),
+    );
+  }
+  row.addComponents(
     new ButtonBuilder()
       .setCustomId('setup_again')
       .setLabel('🔄 Set up again')
       .setStyle(ButtonStyle.Primary),
   );
+  return row;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -223,7 +249,7 @@ function customTimeModal() {
           .setCustomId('custom_time')
           .setLabel('What time are we starting?')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('e.g. 9:30 PM')
+          .setPlaceholder('e.g. 9:30 PM, 930, 21:30, +15m')
           .setRequired(true),
       ),
     );
@@ -238,9 +264,9 @@ function joinTimeModal() {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('join_time')
-          .setLabel('Your join time')
+          .setLabel('Your estimated join time')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('e.g. 9:30 PM, or around 10 PM')
+          .setPlaceholder('e.g. 9:30 PM, 930, 10:15, +30m')
           .setRequired(true),
       ),
     );
@@ -285,7 +311,7 @@ function dmRosterRow(guildId, date) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`dm_join:${guildId}:${date}`)
-      .setLabel('🎮 Join Game')
+      .setLabel('🎮 Join')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`dm_leave:${guildId}:${date}`)

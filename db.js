@@ -122,6 +122,19 @@ function ensureCreator(guildId, date, { id, name }) {
   ).run(id, name, manilaNow(), guildId, date);
 }
 
+/** Transfer host & creator ownership to a new user. */
+function transferHost(guildId, date, { id, name }) {
+  db.prepare(
+    `UPDATE game_nights
+     SET set_by = ?,
+         set_by_name = ?,
+         creator = ?,
+         creator_name = ?,
+         updated_at = ?
+     WHERE guild_id = ? AND date = ?`,
+  ).run(id, name, id, name, manilaNow(), guildId, date);
+}
+
 /** Record the yes/no + optional host time. Preserves the stored message ref. */
 function setAnswer(guildId, date, { playing, time, set_by, set_by_name }) {
   db.prepare(
@@ -235,6 +248,7 @@ module.exports = {
   createOrRefresh,
   setMessageRef,
   ensureCreator,
+  transferHost,
   setAnswer,
   resetToPending,
   remove,

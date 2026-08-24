@@ -1,6 +1,6 @@
 const { PermissionFlagsBits } = require('discord.js');
 const db = require('./db');
-const { todayKey } = require('./utils');
+const { todayKey, formatUserTimeInput } = require('./utils');
 const {
   pendingEmbed,
   yesNoRow,
@@ -174,7 +174,8 @@ async function handleButton(interaction) {
         break;
       }
 
-      case 'dm_join': {
+      case 'dm_join':
+      case 'dm_join_ontime': {
         const row = db.get(guildId, targetDate);
         if (row?.playing !== 1) {
           await interaction
@@ -182,21 +183,15 @@ async function handleButton(interaction) {
             .catch(() => {});
           break;
         }
-        await interaction.update({
-          content: 'Are you joining on time or running late?',
-          components: [dmJoinChoiceRow(guildId, targetDate, row.time || '9:00 PM')],
-        });
-        break;
-      }
-
-      case 'dm_join_ontime': {
-        const row = db.get(guildId, targetDate);
         const startTime = row?.time || '9:00 PM';
         db.setAttendee(guildId, targetDate, {
           user_id: setter.id,
           user_name: setter.name,
           time_: startTime,
         });
+        if (!row.set_by || row.set_by === '') {
+          db.transferHost(guildId, targetDate, setter);
+        }
         await interaction.update(dmConfirmedOptions(guildId, targetDate));
         await refreshGuildMessage(interaction.client, guildId, targetDate);
         break;
@@ -209,6 +204,14 @@ async function handleButton(interaction) {
 
       case 'dm_leave': {
         db.removeAttendee(guildId, targetDate, setter.id);
+        const row = db.get(guildId, targetDate);
+        if (row && row.set_by === setter.id) {
+          const remaining = db.getAttendees(guildId, targetDate);
+          if (remaining.length > 0) {
+            const nextHost = remaining[0];
+            db.transferHost(guildId, targetDate, { id: nextHost.user_id, name: nextHost.user_name });
+          }
+        }
         await interaction.update(dmConfirmedOptions(guildId, targetDate));
         await refreshGuildMessage(interaction.client, guildId, targetDate);
         break;
@@ -289,7 +292,8 @@ async function handleButton(interaction) {
       break;
     }
 
-    case 'join_night': {
+    case 'join_night':
+    case 'join_ontime': {
       const row = db.get(guildId, date);
       if (row?.playing !== 1) {
         await interaction
@@ -297,27 +301,16 @@ async function handleButton(interaction) {
           .catch(() => {});
         break;
       }
-      await interaction.reply({
-        content: `🎮 Are you joining on time (${row.time || '9:00 PM'}) or running late?`,
-        components: [joinChoiceRow(row.time || '9:00 PM')],
-        ephemeral: true,
-      });
-      break;
-    }
-
-    case 'join_ontime': {
-      const row = db.get(guildId, date);
       const startTime = row?.time || '9:00 PM';
       db.setAttendee(guildId, date, {
         user_id: setter.id,
         user_name: setter.name,
         time_: startTime,
       });
-      await interaction.update({
-        content: `✅ You joined **on time** for **${startTime}**!`,
-        components: [],
-      });
-      await refreshGuildMessage(interaction.client, guildId, date);
+      if (!row.set_by || row.set_by === '') {
+        db.transferHost(guildId, date, setter);
+      }
+      await interaction.update(confirmedOptions(guildId, date));
       break;
     }
 
@@ -328,7 +321,43 @@ async function handleButton(interaction) {
 
     case 'leave_night': {
       db.removeAttendee(guildId, date, setter.id);
+      const row = db.get(guildId, date);
+      if (row && row.set_by === setter.id) {
+        const remaining = db.getAttendees(guildId, date);
+        if (remaining.length > 0) {
+          const nextHost = remaining[0];
+          db.transferHost(guildId, date, { id: nextHost.user_id, name: nextHost.user_name });
+        }
+      }
       await interaction.update(confirmedOptions(guildId, date));
+      break;
+    }
+
+    case 'takeover_host': {
+      let row = db.get(guildId, date);
+      const startTime = row?.time || '9:00 PM';
+      db.setAnswer(guildId, date, {
+        playing: 1,
+        time: startTime,
+        set_by: setter.id,
+        set_by_name: setter.name,
+      });
+      db.transferHost(guildId, date, setter);
+      db.setAttendee(guildId, date, {
+        user_id: setter.id,
+        user_name: setter.name,
+        time_: startTime,
+      });
+      if (interaction.message) {
+        db.setMessageRef(guildId, date, {
+          message_id: interaction.message.id,
+          channel_id: interaction.channelId,
+        });
+      }
+      await interaction.update({
+        ...confirmedOptions(guildId, date),
+        content: `👑 <@${setter.id}> took over as **Host**! Game night is back **ON** for tonight!`,
+      });
       break;
     }
 
@@ -381,18 +410,19 @@ async function handleModal(interaction) {
       });
       return;
     }
+    const formatted = formatUserTimeInput(value, targetDate) || value;
     const setter = setterFrom(interaction);
     db.ensureCreator(guildId, targetDate, setter);
     db.setAnswer(guildId, targetDate, {
       playing: 1,
-      time: value,
+      time: formatted,
       set_by: setter.id,
       set_by_name: setter.name,
     });
     db.setAttendee(guildId, targetDate, {
       user_id: setter.id,
       user_name: setter.name,
-      time_: value,
+      time_: formatted,
     });
     await interaction.update(dmConfirmedOptions(guildId, targetDate));
     await refreshGuildMessage(interaction.client, guildId, targetDate);
@@ -415,11 +445,12 @@ async function handleModal(interaction) {
       await interaction.update(opts);
       return;
     }
+    const formatted = formatUserTimeInput(value, targetDate) || value;
     const joiner = setterFrom(interaction);
     db.setAttendee(guildId, targetDate, {
       user_id: joiner.id,
       user_name: joiner.name,
-      time_: value,
+      time_: formatted,
     });
     await interaction.update(dmConfirmedOptions(guildId, targetDate));
     await refreshGuildMessage(interaction.client, guildId, targetDate);
@@ -445,15 +476,16 @@ async function handleModal(interaction) {
       });
       return;
     }
+    const formatted = formatUserTimeInput(value, date) || value;
     const setter = setterFrom(interaction);
     db.ensureCreator(guildId, date, setter);
     db.setAnswer(guildId, date, {
       playing: 1,
-      time: value,
+      time: formatted,
       set_by: setter.id,
       set_by_name: setter.name,
     });
-    db.setAttendee(guildId, date, { user_id: setter.id, user_name: setter.name, time_: value });
+    db.setAttendee(guildId, date, { user_id: setter.id, user_name: setter.name, time_: formatted });
     await interaction.update(confirmedOptions(guildId, date));
     return;
   }
@@ -478,11 +510,12 @@ async function handleModal(interaction) {
       await interaction.update(opts);
       return;
     }
+    const formatted = formatUserTimeInput(value, date) || value;
     const joiner = setterFrom(interaction);
     db.setAttendee(guildId, date, {
       user_id: joiner.id,
       user_name: joiner.name,
-      time_: value,
+      time_: formatted,
     });
     await interaction.update(confirmedOptions(guildId, date));
     return;
