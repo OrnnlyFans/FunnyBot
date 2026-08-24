@@ -1,17 +1,3 @@
-/**
- * Handlers for non-command interactions (buttons & modal submits).
- *
- * Drives the state machine of the single persistent prompt message:
- *
- *   pending  --[YES]-->  host picks a time  -> confirmed (game on)
- *              --[NO]-->  not playing
- *   confirmed --[Join]-->  (modal: your time) -> added to roster
- *             --[Leave]-->  removed from roster
- *
- * Everything is scoped by the interaction's guild id, so one server's buttons
- * can never touch another server's game night.
- */
-
 const { PermissionFlagsBits } = require('discord.js');
 const db = require('./db');
 const { todayKey } = require('./utils');
@@ -27,6 +13,11 @@ const {
   rosterRow,
   customTimeModal,
   joinTimeModal,
+  dmYesNoRow,
+  dmTimeRow,
+  dmRosterRow,
+  dmCustomTimeModal,
+  dmJoinTimeModal,
   TIME_OPTIONS,
 } = require('./gameMessage');
 
@@ -39,10 +30,65 @@ function confirmedOptions(guildId, date) {
   const row = db.get(guildId, date);
   const setter = row && row.set_by ? { id: row.set_by, name: row.set_by_name } : null;
   return {
-    embeds: [confirmedEmbed(row.time, setter, db.getAttendees(guildId, date))],
+    embeds: [confirmedEmbed(row ? row.time : null, setter, db.getAttendees(guildId, date))],
     components: [rosterRow()],
     content: '',
   };
+}
+
+/** DM version of confirmed options with DM roster buttons. */
+function dmConfirmedOptions(guildId, date) {
+  const row = db.get(guildId, date);
+  const setter = row && row.set_by ? { id: row.set_by, name: row.set_by_name } : null;
+  return {
+    embeds: [confirmedEmbed(row ? row.time : null, setter, db.getAttendees(guildId, date))],
+    components: [dmRosterRow(guildId, date)],
+    content: '',
+  };
+}
+
+/** Refreshes the server's main prompt message across the guild channel. */
+async function refreshGuildMessage(client, guildId, date) {
+  if (!client || !guildId || !date) return;
+  try {
+    const row = db.get(guildId, date);
+    if (!row || !row.channel_id || !row.message_id) return;
+    const channel = await client.channels.fetch(row.channel_id).catch(() => null);
+    if (!channel) return;
+    const message = await channel.messages.fetch(row.message_id).catch(() => null);
+    if (!message) return;
+
+    if (row.playing === 1) {
+      const setter = row.set_by ? { id: row.set_by, name: row.set_by_name } : null;
+      const attendees = db.getAttendees(guildId, date);
+      await message
+        .edit({
+          embeds: [confirmedEmbed(row.time, setter, attendees)],
+          components: [rosterRow()],
+          content: '',
+        })
+        .catch(() => {});
+    } else if (row.playing === 0) {
+      const setter = row.set_by ? { id: row.set_by, name: row.set_by_name } : null;
+      await message
+        .edit({
+          embeds: [notPlayingEmbed(setter)],
+          components: [],
+          content: '',
+        })
+        .catch(() => {});
+    } else {
+      await message
+        .edit({
+          embeds: [pendingEmbed()],
+          components: [yesNoRow()],
+          content: '',
+        })
+        .catch(() => {});
+    }
+  } catch (e) {
+    // Best-effort refresh
+  }
 }
 
 /** Is the interaction's user a server administrator? */
@@ -55,6 +101,129 @@ function isAdmin(interaction) {
 /* ---------------------------------------------------------------------- */
 
 async function handleButton(interaction) {
+  const date = todayKey();
+  const setter = setterFrom(interaction);
+
+  // Handle DM button interactions
+  if (interaction.customId.startsWith('dm_')) {
+    const parts = interaction.customId.split(':');
+    const action = parts[0];
+    const guildId = parts[1];
+    const targetDate = parts[2] || date;
+
+    switch (action) {
+      case 'dm_play_yes': {
+        db.ensureCreator(guildId, targetDate, setter);
+        db.setAnswer(guildId, targetDate, {
+          playing: 1,
+          time: null,
+          set_by: setter.id,
+          set_by_name: setter.name,
+        });
+        await interaction.update({
+          embeds: [timeSelectionEmbed(setter)],
+          components: [dmTimeRow(guildId, targetDate)],
+        });
+        await refreshGuildMessage(interaction.client, guildId, targetDate);
+        break;
+      }
+
+      case 'dm_play_no': {
+        db.ensureCreator(guildId, targetDate, setter);
+        db.setAnswer(guildId, targetDate, {
+          playing: 0,
+          time: null,
+          set_by: setter.id,
+          set_by_name: setter.name,
+        });
+        db.clearAttendees(guildId, targetDate);
+        await interaction.update({
+          embeds: [notPlayingEmbed(setter)],
+          components: [],
+        });
+        await refreshGuildMessage(interaction.client, guildId, targetDate);
+        break;
+      }
+
+      case 'dm_time_8':
+      case 'dm_time_9':
+      case 'dm_time_9_30':
+      case 'dm_time_10': {
+        const customId = action.replace(/^dm_/, '');
+        const opt = TIME_OPTIONS.find((t) => t.customId === customId);
+        if (opt) {
+          db.setAnswer(guildId, targetDate, {
+            playing: 1,
+            time: opt.label,
+            set_by: setter.id,
+            set_by_name: setter.name,
+          });
+          db.setAttendee(guildId, targetDate, {
+            user_id: setter.id,
+            user_name: setter.name,
+            time_: opt.label,
+          });
+          await interaction.update(dmConfirmedOptions(guildId, targetDate));
+          await refreshGuildMessage(interaction.client, guildId, targetDate);
+        }
+        break;
+      }
+
+      case 'dm_time_custom': {
+        await interaction.showModal(dmCustomTimeModal(guildId, targetDate));
+        break;
+      }
+
+      case 'dm_join': {
+        const row = db.get(guildId, targetDate);
+        if (row?.playing !== 1) {
+          await interaction
+            .reply({ content: '❌ Nobody has confirmed a game tonight yet.', ephemeral: true })
+            .catch(() => {});
+          break;
+        }
+        await interaction.update({
+          content: 'Are you joining on time or running late?',
+          components: [dmJoinChoiceRow(guildId, targetDate, row.time || '9:00 PM')],
+        });
+        break;
+      }
+
+      case 'dm_join_ontime': {
+        const row = db.get(guildId, targetDate);
+        const startTime = row?.time || '9:00 PM';
+        db.setAttendee(guildId, targetDate, {
+          user_id: setter.id,
+          user_name: setter.name,
+          time_: startTime,
+        });
+        await interaction.update(dmConfirmedOptions(guildId, targetDate));
+        await refreshGuildMessage(interaction.client, guildId, targetDate);
+        break;
+      }
+
+      case 'dm_join_late_modal': {
+        await interaction.showModal(dmJoinTimeModal(guildId, targetDate));
+        break;
+      }
+
+      case 'dm_leave': {
+        db.removeAttendee(guildId, targetDate, setter.id);
+        await interaction.update(dmConfirmedOptions(guildId, targetDate));
+        await refreshGuildMessage(interaction.client, guildId, targetDate);
+        break;
+      }
+
+      default:
+        await interaction
+          .update({ content: 'Unknown button.', components: [] })
+          .catch(() => {});
+        break;
+    }
+    return;
+  }
+
+  // Handle server (guild) button interactions
   const guildId = interaction.guildId;
   if (!guildId) {
     await interaction
@@ -63,14 +232,14 @@ async function handleButton(interaction) {
     return;
   }
 
-  const date = todayKey();
-  const setter = setterFrom(interaction);
-
   switch (interaction.customId) {
     case 'play_yes': {
       db.ensureCreator(guildId, date, setter);
       db.setAnswer(guildId, date, {
-        playing: 1, time: null, set_by: setter.id, set_by_name: setter.name,
+        playing: 1,
+        time: null,
+        set_by: setter.id,
+        set_by_name: setter.name,
       });
       await interaction.update({
         embeds: [timeSelectionEmbed(setter)],
@@ -82,7 +251,10 @@ async function handleButton(interaction) {
     case 'play_no': {
       db.ensureCreator(guildId, date, setter);
       db.setAnswer(guildId, date, {
-        playing: 0, time: null, set_by: setter.id, set_by_name: setter.name,
+        playing: 0,
+        time: null,
+        set_by: setter.id,
+        set_by_name: setter.name,
       });
       db.clearAttendees(guildId, date);
       await interaction.update({
@@ -98,10 +270,15 @@ async function handleButton(interaction) {
     case 'time_10': {
       const opt = TIME_OPTIONS.find((t) => t.customId === interaction.customId);
       db.setAnswer(guildId, date, {
-        playing: 1, time: opt.label, set_by: setter.id, set_by_name: setter.name,
+        playing: 1,
+        time: opt.label,
+        set_by: setter.id,
+        set_by_name: setter.name,
       });
       db.setAttendee(guildId, date, {
-        user_id: setter.id, user_name: setter.name, time_: opt.label,
+        user_id: setter.id,
+        user_name: setter.name,
+        time_: opt.label,
       });
       await interaction.update(confirmedOptions(guildId, date));
       break;
@@ -113,12 +290,38 @@ async function handleButton(interaction) {
     }
 
     case 'join_night': {
-      if (db.get(guildId, date)?.playing !== 1) {
+      const row = db.get(guildId, date);
+      if (row?.playing !== 1) {
         await interaction
           .reply({ content: '❌ Nobody has confirmed a game tonight yet.', ephemeral: true })
           .catch(() => {});
         break;
       }
+      await interaction.reply({
+        content: `🎮 Are you joining on time (${row.time || '9:00 PM'}) or running late?`,
+        components: [joinChoiceRow(row.time || '9:00 PM')],
+        ephemeral: true,
+      });
+      break;
+    }
+
+    case 'join_ontime': {
+      const row = db.get(guildId, date);
+      const startTime = row?.time || '9:00 PM';
+      db.setAttendee(guildId, date, {
+        user_id: setter.id,
+        user_name: setter.name,
+        time_: startTime,
+      });
+      await interaction.update({
+        content: `✅ You joined **on time** for **${startTime}**!`,
+        components: [],
+      });
+      await refreshGuildMessage(interaction.client, guildId, date);
+      break;
+    }
+
+    case 'join_late_modal': {
       await interaction.showModal(joinTimeModal());
       break;
     }
@@ -164,8 +367,67 @@ function cleanTime(raw) {
 }
 
 async function handleModal(interaction) {
-  const guildId = interaction.guildId;
   const date = todayKey();
+
+  // DM Modal: Custom Start Time
+  if (interaction.customId.startsWith('dm_custom_time_modal:')) {
+    const [, guildId, targetDate] = interaction.customId.split(':');
+    const { value, error } = cleanTime(interaction.fields.getTextInputValue('custom_time'));
+    if (error) {
+      await interaction.update({
+        embeds: [timeSelectionEmbed()],
+        components: [dmTimeRow(guildId, targetDate)],
+        content: error,
+      });
+      return;
+    }
+    const setter = setterFrom(interaction);
+    db.ensureCreator(guildId, targetDate, setter);
+    db.setAnswer(guildId, targetDate, {
+      playing: 1,
+      time: value,
+      set_by: setter.id,
+      set_by_name: setter.name,
+    });
+    db.setAttendee(guildId, targetDate, {
+      user_id: setter.id,
+      user_name: setter.name,
+      time_: value,
+    });
+    await interaction.update(dmConfirmedOptions(guildId, targetDate));
+    await refreshGuildMessage(interaction.client, guildId, targetDate);
+    return;
+  }
+
+  // DM Modal: Join Time
+  if (interaction.customId.startsWith('dm_join_time_modal:')) {
+    const [, guildId, targetDate] = interaction.customId.split(':');
+    if (db.get(guildId, targetDate)?.playing !== 1) {
+      await interaction
+        .reply({ content: '🙅 No game is set up tonight anymore.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    const { value, error } = cleanTime(interaction.fields.getTextInputValue('join_time'));
+    if (error) {
+      const opts = dmConfirmedOptions(guildId, targetDate);
+      opts.content = error;
+      await interaction.update(opts);
+      return;
+    }
+    const joiner = setterFrom(interaction);
+    db.setAttendee(guildId, targetDate, {
+      user_id: joiner.id,
+      user_name: joiner.name,
+      time_: value,
+    });
+    await interaction.update(dmConfirmedOptions(guildId, targetDate));
+    await refreshGuildMessage(interaction.client, guildId, targetDate);
+    return;
+  }
+
+  // Guild Modals
+  const guildId = interaction.guildId;
 
   if (interaction.customId === 'time_custom_modal') {
     if (!guildId) {
@@ -186,7 +448,10 @@ async function handleModal(interaction) {
     const setter = setterFrom(interaction);
     db.ensureCreator(guildId, date, setter);
     db.setAnswer(guildId, date, {
-      playing: 1, time: value, set_by: setter.id, set_by_name: setter.name,
+      playing: 1,
+      time: value,
+      set_by: setter.id,
+      set_by_name: setter.name,
     });
     db.setAttendee(guildId, date, { user_id: setter.id, user_name: setter.name, time_: value });
     await interaction.update(confirmedOptions(guildId, date));
@@ -215,7 +480,9 @@ async function handleModal(interaction) {
     }
     const joiner = setterFrom(interaction);
     db.setAttendee(guildId, date, {
-      user_id: joiner.id, user_name: joiner.name, time_: value,
+      user_id: joiner.id,
+      user_name: joiner.name,
+      time_: value,
     });
     await interaction.update(confirmedOptions(guildId, date));
     return;
@@ -226,4 +493,4 @@ async function handleModal(interaction) {
   }
 }
 
-module.exports = { handleButton, handleModal, isAdmin };
+module.exports = { handleButton, handleModal, isAdmin, refreshGuildMessage };

@@ -30,7 +30,7 @@ module.exports = {
     // Tonight already decided — don't overwrite, just point them to /status & /cancel.
     if (row && row.playing !== null) {
       await interaction.reply({
-        embeds: [statusEmbed(row, formatTodayLong())],
+        embeds: [statusEmbed(row, formatTodayLong(), db.getAttendees(guildId, date))],
         content: '> Already answered for tonight. Use **/status** to view, or **/cancel** to reset.',
         ephemeral: true,
       });
@@ -83,6 +83,12 @@ module.exports = {
     } else {
       db.createOrRefresh(guildId, date, { message_id: messageId, channel_id: channelId });
     }
+
+    // Whoever opens the prompt counts as tonight's entry creator (for /cancel).
+    db.ensureCreator(guildId, date, {
+      id: String(interaction.user.id),
+      name: interaction.user.username,
+    });
 
     if (replied) {
       await interaction.followUp({

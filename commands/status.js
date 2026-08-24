@@ -19,8 +19,9 @@ module.exports = {
     }
 
     const row = db.get(guildId, todayKey());
+    const attendees = db.getAttendees(guildId, todayKey());
     await interaction.reply({
-      embeds: [statusEmbed(row, formatTodayLong())],
+      embeds: [statusEmbed(row, formatTodayLong(), attendees)],
     });
   },
 };

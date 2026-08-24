@@ -1,0 +1,146 @@
+const { SlashCommandBuilder } = require('discord.js');
+const db = require('../db');
+const { todayKey } = require('../utils');
+const {
+  confirmedEmbed,
+  notPlayingEmbed,
+  rosterRow,
+} = require('../gameMessage');
+const { refreshGuildMessage } = require('../handlers');
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('respond')
+    .setDescription("Respond to tonight's game night (Yes, No, Join, or Leave).")
+    .addStringOption((option) =>
+      option
+        .setName('status')
+        .setDescription('Your response for tonight')
+        .setRequired(true)
+        .addChoices(
+          { name: '✅ Yes — We are playing (start game night)', value: 'yes' },
+          { name: '🎮 Join — I am playing tonight', value: 'join' },
+          { name: '❌ No — Not playing tonight', value: 'no' },
+          { name: '🚪 Leave — I cannot make it', value: 'leave' },
+        ),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('time')
+        .setDescription('Optional start or arrival time (e.g. 9:00 PM, 9:30 PM)')
+        .setRequired(false),
+    ),
+
+  async execute(interaction) {
+    const guildId = interaction.guildId;
+    if (!guildId) {
+      return interaction.reply({
+        content: '❌ This command only works inside a server.',
+        ephemeral: true,
+      });
+    }
+
+    const date = todayKey();
+    const status = interaction.options.getString('status');
+    const timeInput = interaction.options.getString('time');
+    const user = { id: String(interaction.user.id), name: interaction.user.username };
+
+    let row = db.get(guildId, date);
+
+    if (status === 'yes') {
+      const startTime = timeInput || (row && row.time) || '9:00 PM';
+      db.ensureCreator(guildId, date, user);
+      db.setAnswer(guildId, date, {
+        playing: 1,
+        time: startTime,
+        set_by: user.id,
+        set_by_name: user.name,
+      });
+      db.setAttendee(guildId, date, {
+        user_id: user.id,
+        user_name: user.name,
+        time_: startTime,
+      });
+      const attendees = db.getAttendees(guildId, date);
+      await interaction.reply({
+        embeds: [confirmedEmbed(startTime, user, attendees)],
+        components: [rosterRow()],
+      });
+      await refreshGuildMessage(interaction.client, guildId, date);
+      return;
+    }
+
+    if (status === 'join') {
+      if (!row || row.playing !== 1) {
+        const startTime = timeInput || '9:00 PM';
+        db.ensureCreator(guildId, date, user);
+        db.setAnswer(guildId, date, {
+          playing: 1,
+          time: startTime,
+          set_by: user.id,
+          set_by_name: user.name,
+        });
+        db.setAttendee(guildId, date, {
+          user_id: user.id,
+          user_name: user.name,
+          time_: startTime,
+        });
+      } else {
+        const joinTime = timeInput || row.time || 'Anytime';
+        db.setAttendee(guildId, date, {
+          user_id: user.id,
+          user_name: user.name,
+          time_: joinTime,
+        });
+      }
+      row = db.get(guildId, date);
+      const setter = row && row.set_by ? { id: row.set_by, name: row.set_by_name } : user;
+      const attendees = db.getAttendees(guildId, date);
+      await interaction.reply({
+        content: `🎮 <@${user.id}> joined tonight's game!`,
+        embeds: [confirmedEmbed(row.time, setter, attendees)],
+        components: [rosterRow()],
+      });
+      await refreshGuildMessage(interaction.client, guildId, date);
+      return;
+    }
+
+    if (status === 'no') {
+      db.ensureCreator(guildId, date, user);
+      db.setAnswer(guildId, date, {
+        playing: 0,
+        time: null,
+        set_by: user.id,
+        set_by_name: user.name,
+      });
+      db.clearAttendees(guildId, date);
+      await interaction.reply({
+        embeds: [notPlayingEmbed(user)],
+        components: [],
+      });
+      await refreshGuildMessage(interaction.client, guildId, date);
+      return;
+    }
+
+    if (status === 'leave') {
+      db.removeAttendee(guildId, date, user.id);
+      row = db.get(guildId, date);
+      if (row && row.playing === 1) {
+        const setter = row.set_by ? { id: row.set_by, name: row.set_by_name } : null;
+        const attendees = db.getAttendees(guildId, date);
+        await interaction.reply({
+          content: `🚪 <@${user.id}> left tonight's roster.`,
+          embeds: [confirmedEmbed(row.time, setter, attendees)],
+          components: [rosterRow()],
+        });
+      } else {
+        await interaction.reply({
+          content: `🚪 <@${user.id}> left the roster.`,
+          ephemeral: true,
+        });
+      }
+      await refreshGuildMessage(interaction.client, guildId, date);
+      return;
+    }
+  },
+};

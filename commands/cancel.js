@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const db = require('../db');
 const { todayKey } = require('../utils');
 const { cancelledEmbed, setupAgainRow } = require('../gameMessage');
@@ -9,9 +9,9 @@ module.exports = {
     .setDescription("Cancel tonight's game night (clears the answer and prompt)."),
 
   /**
-   * Clears tonight's record. If the live prompt message still exists, it is
-   * edited to a "cancelled" state with a "Set up again" button so the night
-   * can be re-opened without retyping the command.
+   * Clears tonight's record, but ONLY for tonight's creator or a server admin.
+   * If the live prompt message still exists, it is edited to a "cancelled"
+   * state with a "Set up again" button so the night can be re-opened.
    */
   async execute(interaction) {
     const guildId = interaction.guildId;
@@ -29,6 +29,19 @@ module.exports = {
     if (!row) {
       await interaction.reply({
         content: '🎮 Nothing is set up for tonight. Run **/tonight** to begin.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Gate: only the entry's creator or a server administrator may cancel.
+    const isAdmin = !!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
+    const isCreator =
+      row.creator != null && String(row.creator) === String(interaction.user.id);
+    if (!isAdmin && !isCreator) {
+      await interaction.reply({
+        content:
+          '🚫 Only the person who set up tonight\'s game or an **admin** can cancel it.',
         ephemeral: true,
       });
       return;

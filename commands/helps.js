@@ -24,7 +24,11 @@ module.exports = {
         },
         {
           name: '🔔 `/ping user:@member [message]`',
-          value: 'Send a direct message (DM) to a teammate asking if they\'re playing tonight with the current server status.',
+          value: 'Send a direct message (DM) to a teammate asking if they\'re playing tonight with interactive buttons.',
+        },
+        {
+          name: '📝 `/respond status:[Yes/Join/No/Leave] [time]`',
+          value: 'Directly submit your response or join tonight\'s game roster via slash command.',
         },
         {
           name: '❌ `/cancel`',

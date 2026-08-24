@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../db');
 const { todayKey, formatTodayLong } = require('../utils');
-const { COLORS } = require('../gameMessage');
+const { COLORS, dmYesNoRow, dmRosterRow } = require('../gameMessage');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -39,13 +39,19 @@ module.exports = {
       });
     }
 
-    // Check game night status for context
-    const row = db.get(guildId, todayKey());
+    const date = todayKey();
+    const row = db.get(guildId, date);
     let statusText = 'Pending (nobody answered yet)';
+    let components = [];
+
     if (row && row.playing === 1) {
       statusText = `✅ Yes, playing at ${row.time || 'TBD'}`;
+      components = [dmRosterRow(guildId, date)];
     } else if (row && row.playing === 0) {
       statusText = '❌ No, not playing tonight';
+      components = [];
+    } else {
+      components = [dmYesNoRow(guildId, date)];
     }
 
     const guildName = interaction.guild ? interaction.guild.name : 'the server';
@@ -65,12 +71,16 @@ module.exports = {
       dmEmbed.addFields({ name: '💬 Note', value: customMessage });
     }
 
-    dmEmbed.setFooter({ text: 'Check the server channel or run /status!' });
+    dmEmbed.setFooter({
+      text: components.length > 0
+        ? 'Click the buttons below to respond directly from this DM!'
+        : 'Check the server channel or run /status!',
+    });
 
     try {
-      await targetUser.send({ embeds: [dmEmbed] });
+      await targetUser.send({ embeds: [dmEmbed], components });
       await interaction.reply({
-        content: `✅ Successfully sent a game-night DM to <@${targetUser.id}>!`,
+        content: `✅ Successfully sent an interactive game-night DM to <@${targetUser.id}>!`,
         ephemeral: true,
       });
     } catch (err) {

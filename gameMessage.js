@@ -246,6 +246,116 @@ function joinTimeModal() {
     );
 }
 
+/** DM version of Yes/No row with embedded guildId and date. */
+function dmYesNoRow(guildId, date) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`dm_play_yes:${guildId}:${date}`)
+      .setLabel('✅ YES')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`dm_play_no:${guildId}:${date}`)
+      .setLabel('❌ NO')
+      .setStyle(ButtonStyle.Danger),
+  );
+}
+
+/** DM version of time selection buttons with embedded guildId and date. */
+function dmTimeRow(guildId, date) {
+  const row = new ActionRowBuilder();
+  for (const t of TIME_OPTIONS) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`dm_${t.customId}:${guildId}:${date}`)
+        .setLabel(t.label)
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`dm_time_custom:${guildId}:${date}`)
+      .setLabel('Custom time')
+      .setStyle(ButtonStyle.Secondary),
+  );
+  return row;
+}
+
+/** DM version of Join/Leave buttons with embedded guildId and date. */
+function dmRosterRow(guildId, date) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`dm_join:${guildId}:${date}`)
+      .setLabel('🎮 Join Game')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`dm_leave:${guildId}:${date}`)
+      .setLabel('🚪 Leave')
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+/** Host enters a custom start time via DM. */
+function dmCustomTimeModal(guildId, date) {
+  return new ModalBuilder()
+    .setCustomId(`dm_custom_time_modal:${guildId}:${date}`)
+    .setTitle('Enter a start time')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('custom_time')
+          .setLabel('What time are we starting?')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('e.g. 9:30 PM')
+          .setRequired(true),
+      ),
+    );
+}
+
+/** Player enters their appearance time via DM. */
+function dmJoinTimeModal(guildId, date) {
+  return new ModalBuilder()
+    .setCustomId(`dm_join_time_modal:${guildId}:${date}`)
+    .setTitle('When will you appear?')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('join_time')
+          .setLabel('Your join time')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('e.g. 9:30 PM, or around 10 PM')
+          .setRequired(true),
+      ),
+    );
+}
+
+/** Ephemeral join choices: On Time vs Estimate/Late. */
+function joinChoiceRow(startTime = '9:00 PM') {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('join_ontime')
+      .setLabel(`⏰ On Time (${startTime})`)
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('join_late_modal')
+      .setLabel('⏱️ Running Late / Estimate')
+      .setStyle(ButtonStyle.Primary),
+  );
+}
+
+/** DM version of join choices: On Time vs Estimate/Late. */
+function dmJoinChoiceRow(guildId, date, startTime = '9:00 PM') {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`dm_join_ontime:${guildId}:${date}`)
+      .setLabel(`⏰ On Time (${startTime})`)
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`dm_join_late_modal:${guildId}:${date}`)
+      .setLabel('⏱️ Running Late / Estimate')
+      .setStyle(ButtonStyle.Primary),
+  );
+}
+
 module.exports = {
   COLORS,
   TIME_OPTIONS,
@@ -262,4 +372,11 @@ module.exports = {
   setupAgainRow,
   customTimeModal,
   joinTimeModal,
+  dmYesNoRow,
+  dmTimeRow,
+  dmRosterRow,
+  dmCustomTimeModal,
+  dmJoinTimeModal,
+  joinChoiceRow,
+  dmJoinChoiceRow,
 };

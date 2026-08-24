@@ -3,6 +3,7 @@ const path = require('path');
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const config = require('./config');
 const { handleButton, handleModal } = require('./handlers');
+const { startReminderScheduler } = require('./reminders');
 
 // A minimal client: we only need the Guilds intent to receive commands and
 // to fetch channels/messages via REST.
@@ -22,6 +23,8 @@ client.once('ready', () => {
   console.log(
     `📦 Loaded ${client.commands.size} command(s): ${[...client.commands.keys()].join(', ')}`,
   );
+  startReminderScheduler(client);
+  console.log('⏰ Reminder scheduler started.');
 });
 
 client.on('interactionCreate', async (interaction) => {

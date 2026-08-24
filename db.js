@@ -52,10 +52,21 @@ db.exec(`
       PRIMARY KEY (guild_id, date, user_id)
   );
 
+  CREATE TABLE IF NOT EXISTS sent_reminders (
+      guild_id    TEXT NOT NULL,
+      date        TEXT NOT NULL,
+      target_id   TEXT NOT NULL,   -- 'guild_main' or user_id
+      remind_type TEXT NOT NULL,   -- 'start_soon', 'individual_join'
+      sent_at     TEXT NOT NULL,
+      PRIMARY KEY (guild_id, date, target_id, remind_type)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_game_nights_guild_date
       ON game_nights (guild_id, date);
   CREATE INDEX IF NOT EXISTS idx_attendees_guild_date
       ON game_attendees (guild_id, date);
+  CREATE INDEX IF NOT EXISTS idx_sent_reminders
+      ON sent_reminders (guild_id, date);
 `);
 
 // Migration: add `creator`/`creator_name` to a db file made by the v1 schema.
@@ -192,6 +203,32 @@ function clearAttendees(guildId, date) {
   db.prepare('DELETE FROM game_attendees WHERE guild_id = ? AND date = ?').run(guildId, date);
 }
 
+/* ---------------------------------------------------------------------- */
+/* Reminders                                                              */
+/* ---------------------------------------------------------------------- */
+
+function getActiveGameNights(date) {
+  return db
+    .prepare('SELECT * FROM game_nights WHERE date = ? AND playing = 1')
+    .all(date);
+}
+
+function hasReminderBeenSent(guildId, date, targetId, remindType) {
+  const row = db
+    .prepare(
+      'SELECT 1 FROM sent_reminders WHERE guild_id = ? AND date = ? AND target_id = ? AND remind_type = ?',
+    )
+    .get(guildId, date, targetId, remindType);
+  return !!row;
+}
+
+function recordReminder(guildId, date, targetId, remindType) {
+  db.prepare(
+    `INSERT OR IGNORE INTO sent_reminders (guild_id, date, target_id, remind_type, sent_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(guildId, date, targetId, remindType, manilaNow());
+}
+
 module.exports = {
   db,
   get,
@@ -205,4 +242,7 @@ module.exports = {
   getAttendees,
   removeAttendee,
   clearAttendees,
+  getActiveGameNights,
+  hasReminderBeenSent,
+  recordReminder,
 };
