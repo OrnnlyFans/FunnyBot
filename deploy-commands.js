@@ -29,14 +29,14 @@ for (const file of fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'))
   commands.push(command.data.toJSON());
 }
 
-async function main() {
-  const url = GUILD_ID
-    ? `https://discord.com/api/v10/applications/${CLIENT_ID}/guilds/${GUILD_ID}/commands`
+async function registerCommands(guildId) {
+  const url = guildId
+    ? `https://discord.com/api/v10/applications/${CLIENT_ID}/guilds/${guildId}/commands`
     : `https://discord.com/api/v10/applications/${CLIENT_ID}/commands`;
 
   console.log(
     `Registering ${commands.length} command(s)${
-      GUILD_ID ? ` in guild ${GUILD_ID}` : ' globally'
+      guildId ? ` in guild ${guildId}` : ' globally'
     }...`,
   );
 
@@ -51,14 +51,41 @@ async function main() {
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`❌ Failed to register commands: HTTP ${res.status}\n${text}`);
-    process.exit(1);
+    console.error(
+      `❌ Failed to register commands${guildId ? ` in guild ${guildId}` : ''}: HTTP ${res.status}\n${text}`,
+    );
+    return false;
   }
 
   const data = await res.json();
-  console.log(`✅ Registered ${data.length} command(s).`);
-  if (!GUILD_ID) {
+  console.log(
+    `✅ Registered ${data.length} command(s)${guildId ? ` in guild ${guildId}` : ''}.`,
+  );
+  return true;
+}
+
+async function main() {
+  const guildIds = GUILD_ID
+    ? GUILD_ID.split(',')
+        .map((id) => id.trim())
+        .filter(Boolean)
+    : [];
+
+  let hasError = false;
+
+  if (guildIds.length === 0) {
+    const ok = await registerCommands(null);
+    if (!ok) hasError = true;
     console.log('💡 Global commands can take up to an hour to appear.');
+  } else {
+    for (const gid of guildIds) {
+      const ok = await registerCommands(gid);
+      if (!ok) hasError = true;
+    }
+  }
+
+  if (hasError) {
+    process.exit(1);
   }
 }
 

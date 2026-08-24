@@ -1,7 +1,9 @@
 /**
- * Builders for the embeds, button rows and modal that make up the
- * game-night UI. Keeping these here lets both the slash commands and the
- * button/modal handlers stay tiny and consistent.
+ * Builders for the embeds, button rows and modals that make up the game-night
+ * UI — shared by the slash commands and the button/modal handlers.
+ *
+ * The message is always a live view over the DB: the confirmed cast + an
+ * editable "who's playing" roster (game_attendees).
  */
 
 const {
@@ -14,10 +16,14 @@ const {
   TextInputStyle,
 } = require('discord.js');
 
-/** Preset time buttons shown after someone answers "Yes". */
+/**
+ * Host time presets offered on the "yes" flow. Each maps to a button; a
+ * "custom" button is appended by `timeRow()`. 9:30 PM included per request.
+ */
 const TIME_OPTIONS = [
   { label: '8:00 PM', customId: 'time_8', hour: 20 },
   { label: '9:00 PM', customId: 'time_9', hour: 21 },
+  { label: '9:30 PM', customId: 'time_9_30', hour: 21 },
   { label: '10:00 PM', customId: 'time_10', hour: 22 },
 ];
 
@@ -36,6 +42,17 @@ function setterLine(setter) {
   return setter.name || '_unknown_';
 }
 
+/** Human list of tonight's players: "@User — when they'll appear". */
+function participantsText(attendees = [], max = 15) {
+  if (!attendees.length) return '_nobody has joined yet._';
+  const lines = attendees
+    .slice(0, max)
+    .map((a) => `• <@${a.user_id}> ${a.join_time ? `— ${a.join_time}` : '— _anytime_'}`);
+  const extra = attendees.length - max;
+  if (extra > 0) lines.push(`_… and ${extra} more_`);
+  return lines.join('\n');
+}
+
 /* -------------------------------------------------------------------------- */
 /* Embeds                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -49,26 +66,29 @@ function pendingEmbed() {
     .setFooter({ text: 'Click a button below to answer.' });
 }
 
-/** Shown after someone clicks YES — ask for the time. */
-function timeSelectionEmbed() {
-  return new EmbedBuilder()
-    .setColor(COLORS.success)
-    .setTitle('🎮 Are we playing tonight?')
-    .setDescription('✅ **Yes** — what time?\nChoose a preset, or enter a custom time.')
-    .setFooter({ text: 'Click a button below to pick a time.' });
-}
-
-/** The final confirmation: we're playing at `time`. */
-function confirmedEmbed(time, setter) {
+/** Shown after the host clicks YES — ask for the time. */
+function timeSelectionEmbed(setter) {
   const embed = new EmbedBuilder()
     .setColor(COLORS.success)
-    .setTitle('🎮 TONIGHT')
-    .setDescription('✅ **We\'re playing!**')
-    .addFields({ name: '🕘 Time', value: time || '_not chosen yet_', inline: true });
+    .setTitle('🎮 Are we playing tonight?')
+    .setDescription('✅ **Yes** — what time?\nChoose a preset, or enter a custom time.');
+  if (setter) embed.addFields({ name: '👤 Set by', value: setterLine(setter), inline: true });
+  embed.setFooter({ text: 'Click a button below to pick the start time.' });
+  return embed;
+}
+
+/** The final "game on" confirmation with the growing player roster. */
+function confirmedEmbed(time, setter, attendees = []) {
+  const embed = new EmbedBuilder()
+    .setColor(COLORS.success)
+    .setTitle('🎮 WE\'RE PLAYING TONIGHT')
+    .setDescription('✅ Game on!')
+    .addFields({ name: '🕘 Start at', value: time || '_not chosen yet_', inline: true });
   if (setter) {
-    embed.addFields({ name: '👤 Set by', value: setterLine(setter), inline: true });
+    embed.addFields({ name: '🕹 Host', value: setterLine(setter), inline: true });
   }
-  embed.setFooter({ text: 'Run /status for details.' });
+  embed.addFields({ name: `👥 Playing`, value: participantsText(attendees) });
+  embed.setFooter({ text: 'Tap Join below to add yourself · /status for the full list' });
   return embed;
 }
 
@@ -76,7 +96,7 @@ function confirmedEmbed(time, setter) {
 function notPlayingEmbed(setter) {
   return new EmbedBuilder()
     .setColor(COLORS.danger)
-    .setTitle('🎮 TONIGHT')
+    .setTitle('🎮 NOT PLAYING TONIGHT')
     .setDescription('❌ **Not playing tonight.**')
     .addFields({ name: '👤 Set by', value: setterLine(setter) })
     .setFooter({ text: 'Run /status for details.' });
@@ -91,8 +111,8 @@ function cancelledEmbed() {
     .setFooter({ text: 'Run /tonight to start fresh, or click "Set up again" below.' });
 }
 
-/** /status output. Handles pending + answered states. */
-function statusEmbed(row, todayLong) {
+/** /status output. Shows the yes/no, host time, and the player roster. */
+function statusEmbed(row, todayLong, attendees = []) {
   const embed = new EmbedBuilder()
     .setColor(COLORS.info)
     .setTitle('🎮 Tonight\'s Game')
@@ -110,14 +130,18 @@ function statusEmbed(row, todayLong) {
     .addFields({ name: '🎮 Playing', value: row.playing === 1 ? '✅ Yes' : '❌ No', inline: true });
 
   if (row.playing === 1) {
-    embed.addFields({ name: '🕘 Time', value: row.time || '_not chosen yet_', inline: true });
+    embed.addFields({ name: '🕘 Start at', value: row.time || '_not chosen yet_', inline: true });
   }
 
   if (row.set_by) {
     embed.addFields({
-      name: '👤 Set by',
+      name: '🕹 Host',
       value: setterLine({ id: row.set_by, name: row.set_by_name }),
     });
+  }
+
+  if (row.playing === 1) {
+    embed.addFields({ name: '👥 Playing', value: participantsText(attendees) });
   }
 
   return embed;
@@ -140,6 +164,7 @@ function yesNoRow() {
   );
 }
 
+/** Host start-time presets (currently 4) + a custom-time button. */
 function timeRow() {
   const row = new ActionRowBuilder();
   for (const t of TIME_OPTIONS) {
@@ -149,7 +174,7 @@ function timeRow() {
         .setLabel(t.label)
         .setStyle(ButtonStyle.Primary),
     );
-    }
+  }
   row.addComponents(
     new ButtonBuilder()
       .setCustomId('time_custom')
@@ -157,6 +182,20 @@ function timeRow() {
       .setStyle(ButtonStyle.Secondary),
   );
   return row;
+}
+
+/** Join / Leave buttons shown on the confirmed "we're playing" message. */
+function rosterRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('join_night')
+      .setLabel('🎮 Join')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('leave_night')
+      .setLabel('🚪 Leave')
+      .setStyle(ButtonStyle.Secondary),
+  );
 }
 
 /** A "re-open tonight" button for the cancelled message. */
@@ -170,21 +209,38 @@ function setupAgainRow() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Modal                                                                       */
+/* Modals                                                                       */
 /* -------------------------------------------------------------------------- */
 
-/** A modal prompting for a custom time string. */
+/** Host enters a custom start time. */
 function customTimeModal() {
   return new ModalBuilder()
     .setCustomId('time_custom_modal')
-    .setTitle('Enter a time')
+    .setTitle('Enter a start time')
     .addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('custom_time')
-          .setLabel('What time are we playing?')
+          .setLabel('What time are we starting?')
           .setStyle(TextInputStyle.Short)
           .setPlaceholder('e.g. 9:30 PM')
+          .setRequired(true),
+      ),
+    );
+}
+
+/** A player's own "I'll appear at this time" modal. */
+function joinTimeModal() {
+  return new ModalBuilder()
+    .setCustomId('join_time_modal')
+    .setTitle('When will you appear?')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('join_time')
+          .setLabel('Your join time')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('e.g. 9:30 PM, or around 10 PM')
           .setRequired(true),
       ),
     );
@@ -199,8 +255,11 @@ module.exports = {
   notPlayingEmbed,
   cancelledEmbed,
   statusEmbed,
+  participantsText,
   yesNoRow,
   timeRow,
+  rosterRow,
   setupAgainRow,
   customTimeModal,
+  joinTimeModal,
 };

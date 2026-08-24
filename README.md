@@ -34,11 +34,13 @@ recorded, `/status` shows it and `/tonight` will no longer re-post a prompt
 
 ## Commands
 
-| Command   | What it does                                                    |
-| --------- | --------------------------------------------------------------- |
+| Command    | What it does                                                    |
+| ---------- | --------------------------------------------------------------- |
 | `/tonight` | Posts (or refreshes) the interactive "are we playing?" prompt.  |
 | `/status`  | Shows tonight's stored answer (Yes/No, time, who set it).        |
+| `/ping`    | DMs a teammate asking if they're playing with the server status.|
 | `/cancel`  | Clears tonight's game night and marks the message as cancelled.  |
+| `/help`    | Shows the command list and instructions on using the bot.        |
 
 A **"Set up again"** button appears on a cancelled message so you can
 re-open the night without retyping `/tonight`.
