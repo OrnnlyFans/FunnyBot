@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Local database (created at runtime)
+data/
+*.db
+*.db-journal
+
+# Environment secrets
+.env
+
+# Logs
+*.log
+npm-debug.log*
