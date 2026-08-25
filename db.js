@@ -36,6 +36,7 @@ db.exec(`
       set_by_name  TEXT,
       creator      TEXT,              -- user who created the entry (for /cancel)
       creator_name TEXT,
+      game         TEXT,              -- selected game (e.g. Valorant, League, Party, Any)
       message_id   TEXT,              -- the live prompt message id
       channel_id   TEXT,
       updated_at   TEXT,
@@ -56,9 +57,21 @@ db.exec(`
       guild_id    TEXT NOT NULL,
       date        TEXT NOT NULL,
       target_id   TEXT NOT NULL,   -- 'guild_main' or user_id
-      remind_type TEXT NOT NULL,   -- 'start_soon', 'individual_join'
+      remind_type TEXT NOT NULL,   -- 'start_soon', 'start_after', 'individual_join', 'individual_after'
       sent_at     TEXT NOT NULL,
       PRIMARY KEY (guild_id, date, target_id, remind_type)
+  );
+
+  CREATE TABLE IF NOT EXISTS lies_and_deceit (
+      guild_id         TEXT NOT NULL,
+      date             TEXT NOT NULL,    -- the game-night date this was recorded against
+      user_id          TEXT NOT NULL,    -- the teammate who didn't show
+      user_name        TEXT,
+      declared_by      TEXT,             -- host who declared it
+      declared_by_name TEXT,
+      reason           TEXT,
+      declared_at      TEXT NOT NULL,
+      PRIMARY KEY (guild_id, date, user_id)
   );
 
   CREATE INDEX IF NOT EXISTS idx_game_nights_guild_date
@@ -75,6 +88,7 @@ db.exec(`
   const adds = [];
   if (!cols.includes('creator')) adds.push('ALTER TABLE game_nights ADD COLUMN creator TEXT');
   if (!cols.includes('creator_name')) adds.push('ALTER TABLE game_nights ADD COLUMN creator_name TEXT');
+  if (!cols.includes('game')) adds.push('ALTER TABLE game_nights ADD COLUMN game TEXT');
   if (adds.length) db.exec(adds.join(';'));
 })();
 
@@ -160,6 +174,7 @@ function resetToPending(guildId, date, { message_id, channel_id }) {
     db.prepare(
       `UPDATE game_nights
        SET playing = NULL, time = NULL, set_by = NULL, set_by_name = NULL,
+            game = NULL,
            message_id = ?, channel_id = ?, updated_at = ?
        WHERE guild_id = ? AND date = ?`,
     ).run(message_id, channel_id, manilaNow(), guildId, date);
@@ -242,6 +257,65 @@ function recordReminder(guildId, date, targetId, remindType) {
   ).run(guildId, date, targetId, remindType, manilaNow());
 }
 
+/* ---------------------------------------------------------------------- */
+/* Game selection                                                         */
+/* ---------------------------------------------------------------------- */
+
+/** Store the game chosen by the host (e.g. "Valorant", "League", "Party", "Any"). */
+function setGame(guildId, date, game) {
+  db.prepare(
+    'UPDATE game_nights SET game = ?, updated_at = ? WHERE guild_id = ? AND date = ?',
+  ).run(game, manilaNow(), guildId, date);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Lies and Deceit — no-show tracking                                       */
+/* ---------------------------------------------------------------------- */
+
+/** Record (or update) a no-show for a teammate on a given game-night date. */
+function addNoShow(guildId, date, { user_id, user_name, declared_by, declared_by_name, reason }) {
+  db.prepare(
+    `INSERT INTO lies_and_deceit
+        (guild_id, date, user_id, user_name, declared_by, declared_by_name, reason, declared_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(guild_id, date, user_id) DO UPDATE SET
+        user_name = excluded.user_name,
+        declared_by = excluded.declared_by,
+        declared_by_name = excluded.declared_by_name,
+        reason = excluded.reason,
+        declared_at = excluded.declared_at`,
+  ).run(guildId, date, user_id, user_name, declared_by, declared_by_name, reason || null, manilaNow());
+}
+
+/** All no-shows recorded for a specific game-night date. */
+function getNoShows(guildId, date) {
+  return db
+    .prepare(
+      'SELECT * FROM lies_and_deceit WHERE guild_id = ? AND date = ? ORDER BY declared_at',
+    )
+    .all(guildId, date);
+}
+
+/** Total no-show count for a user across every date (the "Lies and Deceit" counter). */
+function getNoShowCount(guildId, userId) {
+  const row = db
+    .prepare('SELECT COUNT(*) as cnt FROM lies_and_deceit WHERE guild_id = ? AND user_id = ?')
+    .get(guildId, userId);
+  return row ? row.cnt : 0;
+}
+
+/** All-time no-show leaderboard for a guild: user_id, user_name, count, last_declared. */
+function getAllNoShowCounts(guildId) {
+  return db
+    .prepare(
+      `SELECT user_id, user_name, COUNT(*) as count, MAX(declared_at) as last_declared
+       FROM lies_and_deceit WHERE guild_id = ?
+       GROUP BY user_id, user_name
+       ORDER BY count DESC, last_declared DESC`,
+    )
+    .all(guildId);
+}
+
 module.exports = {
   db,
   get,
@@ -252,6 +326,7 @@ module.exports = {
   setAnswer,
   resetToPending,
   remove,
+  setGame,
   setAttendee,
   getAttendees,
   removeAttendee,
@@ -259,4 +334,8 @@ module.exports = {
   getActiveGameNights,
   hasReminderBeenSent,
   recordReminder,
+  addNoShow,
+  getNoShows,
+  getNoShowCount,
+  getAllNoShowCounts,
 };

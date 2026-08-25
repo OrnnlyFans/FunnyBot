@@ -19,6 +19,8 @@ const {
   dmCustomTimeModal,
   dmJoinTimeModal,
   TIME_OPTIONS,
+  gameRow,
+  dmGameRow,
 } = require('./gameMessage');
 
 function setterFrom(interaction) {
@@ -30,8 +32,8 @@ function confirmedOptions(guildId, date) {
   const row = db.get(guildId, date);
   const setter = row && row.set_by ? { id: row.set_by, name: row.set_by_name } : null;
   return {
-    embeds: [confirmedEmbed(row ? row.time : null, setter, db.getAttendees(guildId, date))],
-    components: [rosterRow()],
+    embeds: [confirmedEmbed(row ? row.time : null, setter, db.getAttendees(guildId, date), row ? row.game : null)],
+    components: [gameRow(row ? row.game : null), rosterRow()],
     content: '',
   };
 }
@@ -41,8 +43,8 @@ function dmConfirmedOptions(guildId, date) {
   const row = db.get(guildId, date);
   const setter = row && row.set_by ? { id: row.set_by, name: row.set_by_name } : null;
   return {
-    embeds: [confirmedEmbed(row ? row.time : null, setter, db.getAttendees(guildId, date))],
-    components: [dmRosterRow(guildId, date)],
+    embeds: [confirmedEmbed(row ? row.time : null, setter, db.getAttendees(guildId, date), row ? row.game : null)],
+    components: [dmGameRow(guildId, date, row ? row.game : null), dmRosterRow(guildId, date)],
     content: '',
   };
 }
@@ -63,8 +65,8 @@ async function refreshGuildMessage(client, guildId, date) {
       const attendees = db.getAttendees(guildId, date);
       await message
         .edit({
-          embeds: [confirmedEmbed(row.time, setter, attendees)],
-          components: [rosterRow()],
+          embeds: [confirmedEmbed(row.time, setter, attendees, row.game)],
+          components: [gameRow(row.game), rosterRow()],
           content: '',
         })
         .catch(() => {});
@@ -171,6 +173,22 @@ async function handleButton(interaction) {
 
       case 'dm_time_custom': {
         await interaction.showModal(dmCustomTimeModal(guildId, targetDate));
+        break;
+      }
+
+      case 'dm_game_Valorant':
+      case 'dm_game_League':
+      case 'dm_game_Party':
+      case 'dm_game_Any': {
+        if (db.get(guildId, targetDate)?.playing !== 1) {
+          await interaction
+            .reply({ content: '❌ Nobody has confirmed a game tonight yet.', ephemeral: true })
+            .catch(() => {});
+          break;
+        }
+        db.setGame(guildId, targetDate, action.replace('dm_game_', ''));
+        await interaction.update(dmConfirmedOptions(guildId, targetDate));
+        await refreshGuildMessage(interaction.client, guildId, targetDate);
         break;
       }
 
@@ -289,6 +307,22 @@ async function handleButton(interaction) {
 
     case 'time_custom': {
       await interaction.showModal(customTimeModal());
+      break;
+    }
+
+    case 'game_Valorant':
+    case 'game_League':
+    case 'game_Party':
+    case 'game_Any': {
+      const grow = db.get(guildId, date);
+      if (!grow || grow.playing !== 1) {
+        await interaction
+          .reply({ content: '🙅 No game is set up tonight anymore.', ephemeral: true })
+          .catch(() => {});
+        break;
+      }
+      db.setGame(guildId, date, interaction.customId.replace('game_', ''));
+      await interaction.update(confirmedOptions(guildId, date));
       break;
     }
 

@@ -47,8 +47,16 @@ module.exports = {
           value: '`/help` shows this private help menu; `/helps` posts it publicly in the channel for everyone.',
         },
         {
+          name: '🎲 Pick the Game',
+          value: 'After the night is confirmed, **Valorant / League / Party / Any** buttons appear on the message — tap one to declare what you\'re playing (DM buttons included).',
+        },
+        {
           name: '⏰ Automated Reminders',
-          value: 'The bot automatically pings the squad ~10 minutes before game time and sends private arrival reminders to players running late.',
+          value: 'Pings the squad ~10 minutes before game time, pings you personally around your declared arrival time, then checks in again ~10 minutes after start. Game night ALWAYS ends by 6:00 AM.',
+        },
+        {
+          name: '🎭 Lies and Deceit (/no-show)',
+          value: "Said they'd show up but ghosted? The host or an admin records it with `/no-show user:@member [reason]`. Run `/no-show` alone for the all-time Hall of Shame leaderboard.",
         },
         {
           name: '👑 Host Takeover & Succession',

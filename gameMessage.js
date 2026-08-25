@@ -27,6 +27,14 @@ const TIME_OPTIONS = [
   { label: '10:00 PM', customId: 'time_10', hour: 22 },
 ];
 
+/** Games players can pick once the night is confirmed. */
+const GAME_OPTIONS = [
+  { label: 'Valorant', value: 'Valorant' },
+  { label: 'League', value: 'League' },
+  { label: 'Party', value: 'Party' },
+  { label: 'Any', value: 'Any' },
+];
+
 const COLORS = {
   prompt: 0x8a2be2,   // purple
   success: 0x23a552,  // green
@@ -78,17 +86,20 @@ function timeSelectionEmbed(setter) {
 }
 
 /** The final "game on" confirmation with the growing player roster. */
-function confirmedEmbed(time, setter, attendees = []) {
+function confirmedEmbed(time, setter, attendees = [], game = null) {
   const embed = new EmbedBuilder()
     .setColor(COLORS.success)
     .setTitle('🎮 WE\'RE PLAYING TONIGHT')
     .setDescription('✅ Game on!')
     .addFields({ name: '🕘 Start at', value: time || '_not chosen yet_', inline: true });
+  if (game) {
+    embed.addFields({ name: '🎮 Game', value: game, inline: true });
+  }
   if (setter) {
     embed.addFields({ name: '🕹 Host', value: setterLine(setter), inline: true });
   }
   embed.addFields({ name: `👥 Playing`, value: participantsText(attendees) });
-  embed.setFooter({ text: 'Tap Join below to add yourself · /status for the full list' });
+  embed.setFooter({ text: 'Tap Join below to add yourself · Pick a game · /status for the full list' });
   return embed;
 }
 
@@ -147,6 +158,7 @@ function statusEmbed(row, todayLong, attendees = []) {
 
   if (row.playing === 1) {
     embed.addFields({ name: '🕘 Start at', value: row.time || '_not chosen yet_', inline: true });
+    if (row.game) embed.addFields({ name: '🎮 Game', value: row.game, inline: true });
   }
 
   if (row.set_by) {
@@ -201,6 +213,34 @@ function timeRow() {
 }
 
 /** Join / Leave buttons shown on the confirmed "we're playing" message. */
+/** Buttons for the host to declare which game tonight's session is. */
+function gameRow(selectedGame = null) {
+  const row = new ActionRowBuilder();
+  for (const g of GAME_OPTIONS) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`game_${g.value}`)
+        .setLabel(g.label)
+        .setStyle(g.value === selectedGame ? ButtonStyle.Success : ButtonStyle.Primary),
+    );
+  }
+  return row;
+}
+
+/** DM version of the game-selection buttons with embedded guildId and date. */
+function dmGameRow(guildId, date, selectedGame = null) {
+  const row = new ActionRowBuilder();
+  for (const g of GAME_OPTIONS) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`dm_game_${g.value}:${guildId}:${date}`)
+        .setLabel(g.label)
+        .setStyle(g.value === selectedGame ? ButtonStyle.Success : ButtonStyle.Primary),
+    );
+  }
+  return row;
+}
+
 function rosterRow() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -385,6 +425,7 @@ function dmJoinChoiceRow(guildId, date, startTime = '9:00 PM') {
 module.exports = {
   COLORS,
   TIME_OPTIONS,
+  GAME_OPTIONS,
   pendingEmbed,
   timeSelectionEmbed,
   confirmedEmbed,
@@ -395,6 +436,8 @@ module.exports = {
   yesNoRow,
   timeRow,
   rosterRow,
+  gameRow,
+  dmGameRow,
   setupAgainRow,
   customTimeModal,
   joinTimeModal,

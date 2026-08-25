@@ -59,6 +59,22 @@ function manilaNow(date = new Date()) {
 }
 
 /**
+ * The current Manila clock hour, 0-23 (24-hour). Used to enforce the
+ * "game night ends at 6 AM" rule: no reminders fire after 6 AM Manila time.
+ * @param {Date} [date] default = now.
+ * @returns {number}
+ */
+function manilaHour(date = new Date()) {
+  return Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: TZ,
+      hour: 'numeric',
+      hour12: false,
+    }).format(date),
+  );
+}
+
+/**
  * Parses a time string (e.g. "9:00 PM", "9:30", "+15m") against a Manila date.
  * Returns a JS Date object in UTC/local time corresponding to that Manila clock time.
  * @param {string} timeStr
@@ -165,4 +181,4 @@ function formatUserTimeInput(raw, dateKey = todayKey()) {
   return str;
 }
 
-module.exports = { TZ, todayKey, formatTodayLong, manilaNow, parseTimeString, formatUserTimeInput };
+module.exports = { TZ, todayKey, formatTodayLong, manilaNow, manilaHour, parseTimeString, formatUserTimeInput };

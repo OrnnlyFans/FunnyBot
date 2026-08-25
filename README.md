@@ -40,10 +40,23 @@ recorded, `/status` shows it and `/tonight` will no longer re-post a prompt
 | `/status`  | Shows tonight's stored answer (Yes/No, time, who set it).        |
 | `/ping`    | DMs a teammate asking if they're playing with the server status.|
 | `/cancel`  | Clears tonight's game night and marks the message as cancelled.  |
+| `/no-show` | 🎭 Lies & Deceit: declare a teammate who ghosted, or view the leaderboard. |
 | `/help`    | Shows the command list and instructions on using the bot.        |
 
 A **"Set up again"** button appears on a cancelled message so you can
 re-open the night without retyping `/tonight`.
+
+## Games, pings & the 6 AM rule
+
+- 🎲 **Pick the game** — once a night is confirmed, **Valorant / League /
+  Party / Any** buttons appear on the message (in the server *and* in DMs).
+- ⏰ **Pings** — ~10 minutes before start, a personal ping at your declared
+  arrival time, and a check-in ~10 minutes after start.
+- 🌅 **Hard stop at 6 AM** — no pings are ever sent after 6:00 AM Manila time;
+  game night always ends there regardless of when it started.
+- 🎭 **Lies and Deceit** — the host or an admin runs `/no-show user:@member`
+  to record someone who said they'd appear but didn't. The counter is
+  permanent per user; `/no-show` with no arguments shows the Hall of Shame.
 
 ## Setup
 
@@ -104,6 +117,7 @@ visible to everyone who runs `/status`.
 | `time`        | e.g. `9:00 PM` (only when playing = yes)        |
 | `set_by`      | the user id of whoever answered                 |
 | `set_by_name` | their username                                  |
+| `game`        | chosen game (`Valorant`, `League`, `Party`, `Any`) |
 | `message_id`  | the prompt message this row is attached to       |
 | `channel_id`  | where that message lives                         |
 

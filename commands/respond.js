@@ -4,6 +4,7 @@ const { todayKey, formatUserTimeInput } = require('../utils');
 const {
   confirmedEmbed,
   notPlayingEmbed,
+  gameRow,
   rosterRow,
 } = require('../gameMessage');
 const { refreshGuildMessage } = require('../handlers');
@@ -62,10 +63,11 @@ module.exports = {
         user_name: user.name,
         time_: startTime,
       });
+      const freshRow = db.get(guildId, date);
       const attendees = db.getAttendees(guildId, date);
       await interaction.reply({
-        embeds: [confirmedEmbed(startTime, user, attendees)],
-        components: [rosterRow()],
+        embeds: [confirmedEmbed(startTime, user, attendees, freshRow ? freshRow.game : null)],
+        components: [gameRow(freshRow ? freshRow.game : null), rosterRow()],
       });
       await refreshGuildMessage(interaction.client, guildId, date);
       return;
@@ -99,8 +101,8 @@ module.exports = {
       const attendees = db.getAttendees(guildId, date);
       await interaction.reply({
         content: `🎮 <@${user.id}> joined tonight's game!`,
-        embeds: [confirmedEmbed(row.time, setter, attendees)],
-        components: [rosterRow()],
+        embeds: [confirmedEmbed(row.time, setter, attendees, row.game)],
+        components: [gameRow(row.game), rosterRow()],
       });
       await refreshGuildMessage(interaction.client, guildId, date);
       return;
@@ -131,8 +133,8 @@ module.exports = {
         const attendees = db.getAttendees(guildId, date);
         await interaction.reply({
           content: `🚪 <@${user.id}> left tonight's roster.`,
-          embeds: [confirmedEmbed(row.time, setter, attendees)],
-          components: [rosterRow()],
+          embeds: [confirmedEmbed(row.time, setter, attendees, row.game)],
+          components: [gameRow(row.game), rosterRow()],
         });
       } else {
         await interaction.reply({

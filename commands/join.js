@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const db = require('../db');
 const { todayKey, formatUserTimeInput } = require('../utils');
-const { confirmedEmbed, rosterRow } = require('../gameMessage');
+const { confirmedEmbed, gameRow, rosterRow } = require('../gameMessage');
 const { refreshGuildMessage } = require('../handlers');
 
 module.exports = {
@@ -60,8 +60,8 @@ module.exports = {
 
     await interaction.reply({
       content: `🎮 <@${user.id}> joined tonight's game!`,
-      embeds: [confirmedEmbed(row.time, setter, attendees)],
-      components: [rosterRow()],
+      embeds: [confirmedEmbed(row.time, setter, attendees, row.game)],
+      components: [gameRow(row.game), rosterRow()],
     });
 
     await refreshGuildMessage(interaction.client, guildId, date);
