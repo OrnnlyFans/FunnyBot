@@ -192,6 +192,31 @@ async function handleButton(interaction) {
         break;
       }
 
+      case 'dm_join_watch': {
+        if (db.get(guildId, targetDate)?.playing !== 1) {
+          await interaction
+            .reply({ content: '❌ Nobody has confirmed a game tonight yet.', ephemeral: true })
+            .catch(() => {});
+          break;
+        }
+        const prevDW = db.getAttendees(guildId, targetDate).find(
+          (a) => a.user_id === interaction.user.id,
+        );
+        const keepDW =
+          prevDW && prevDW.join_time && prevDW.join_time !== 'On Time'
+            ? prevDW.join_time
+            : null;
+        db.setAttendee(guildId, targetDate, {
+          user_id: String(interaction.user.id),
+          user_name: interaction.user.username,
+          time_: keepDW,
+          role: 'watcher',
+        });
+        await interaction.update(dmConfirmedOptions(guildId, targetDate));
+        await refreshGuildMessage(interaction.client, guildId, targetDate);
+        break;
+      }
+
       case 'dm_join':
       case 'dm_join_ontime': {
         const row = db.get(guildId, targetDate);
@@ -322,6 +347,28 @@ async function handleButton(interaction) {
         break;
       }
       db.setGame(guildId, date, interaction.customId.replace('game_', ''));
+      await interaction.update(confirmedOptions(guildId, date));
+      break;
+    }
+
+    case 'join_watch': {
+      const wrow = db.get(guildId, date);
+      if (!wrow || wrow.playing !== 1) {
+        await interaction
+          .reply({ content: '🙅 No game is set up tonight anymore.', ephemeral: true })
+          .catch(() => {});
+        break;
+      }
+      // Keep any arrival time they'd already declared as a player.
+      const prevW = db.getAttendees(guildId, date).find((a) => a.user_id === setter.id);
+      const keepTime =
+        prevW && prevW.join_time && prevW.join_time !== 'On Time' ? prevW.join_time : null;
+      db.setAttendee(guildId, date, {
+        user_id: setter.id,
+        user_name: setter.name,
+        time_: keepTime,
+        role: 'watcher',
+      });
       await interaction.update(confirmedOptions(guildId, date));
       break;
     }

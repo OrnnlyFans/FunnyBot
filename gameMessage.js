@@ -53,11 +53,35 @@ function setterLine(setter) {
 /** Human list of tonight's players: "@User — when they'll appear". */
 function participantsText(attendees = [], max = 15) {
   if (!attendees.length) return '_nobody has joined yet._';
-  const lines = attendees
-    .slice(0, max)
-    .map((a) => `• <@${a.user_id}> ${a.join_time ? `— ${a.join_time}` : '— _anytime_'}`);
-  const extra = attendees.length - max;
-  if (extra > 0) lines.push(`_… and ${extra} more_`);
+  const players = attendees.filter((a) => a.role !== 'watcher');
+  const watchers = attendees.filter((a) => a.role === 'watcher');
+
+  const lines = [];
+  lines.push(`🎮 **Playing (${players.length}):**`);
+  if (!players.length) {
+    lines.push('_no players yet… just an audience so far._');
+  } else {
+    for (const p of players.slice(0, max)) {
+      lines.push(
+        `• <@${p.user_id}> ${p.join_time && p.join_time !== 'On Time' ? `— ${p.join_time}` : '— _anytime_'}`,
+      );
+    }
+    const extraP = players.length - max;
+    if (extraP > 0) lines.push(`_… and ${extraP} more_`);
+  }
+
+  if (watchers.length) {
+    lines.push('');
+    lines.push(`🍿 **Watching (${watchers.length}):**`);
+    for (const w of watchers.slice(0, max)) {
+      lines.push(
+        `• <@${w.user_id}>${w.join_time && w.join_time !== 'On Time' ? ` — arrives ~${w.join_time}` : ''}`,
+      );
+    }
+    const extraW = watchers.length - max;
+    if (extraW > 0) lines.push(`_… and ${extraW} more_`);
+  }
+
   return lines.join('\n');
 }
 
@@ -98,7 +122,7 @@ function confirmedEmbed(time, setter, attendees = [], game = null) {
   if (setter) {
     embed.addFields({ name: '🕹 Host', value: setterLine(setter), inline: true });
   }
-  embed.addFields({ name: `👥 Playing`, value: participantsText(attendees) });
+  embed.addFields({ name: `👥 Squad`, value: participantsText(attendees) });
   embed.setFooter({ text: 'Tap Join below to add yourself · Pick a game · /status for the full list' });
   return embed;
 }
@@ -169,7 +193,7 @@ function statusEmbed(row, todayLong, attendees = []) {
   }
 
   if (row.playing === 1) {
-    embed.addFields({ name: '👥 Playing', value: participantsText(attendees) });
+    embed.addFields({ name: '👥 Squad', value: participantsText(attendees) });
   }
 
   return embed;
@@ -250,6 +274,10 @@ function rosterRow() {
     new ButtonBuilder()
       .setCustomId('leave_night')
       .setLabel('🚪 Leave')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('join_watch')
+      .setLabel('🍿 Watch')
       .setStyle(ButtonStyle.Secondary),
   );
 }
@@ -356,6 +384,10 @@ function dmRosterRow(guildId, date) {
     new ButtonBuilder()
       .setCustomId(`dm_leave:${guildId}:${date}`)
       .setLabel('🚪 Leave')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`dm_join_watch:${guildId}:${date}`)
+      .setLabel('🍿 Watch')
       .setStyle(ButtonStyle.Secondary),
   );
 }

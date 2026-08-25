@@ -49,6 +49,7 @@ db.exec(`
       user_id   TEXT NOT NULL,
       user_name TEXT,
       join_time TEXT,
+      role      TEXT,             -- 'player' (default) or 'watcher'
       joined_at TEXT,
       PRIMARY KEY (guild_id, date, user_id)
   );
@@ -63,6 +64,7 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS lies_and_deceit (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
       guild_id         TEXT NOT NULL,
       date             TEXT NOT NULL,    -- the game-night date this was recorded against
       user_id          TEXT NOT NULL,    -- the teammate who didn't show
@@ -70,8 +72,7 @@ db.exec(`
       declared_by      TEXT,             -- host who declared it
       declared_by_name TEXT,
       reason           TEXT,
-      declared_at      TEXT NOT NULL,
-      PRIMARY KEY (guild_id, date, user_id)
+      declared_at      TEXT NOT NULL
   );
 
   CREATE INDEX IF NOT EXISTS idx_game_nights_guild_date
@@ -82,14 +83,41 @@ db.exec(`
       ON sent_reminders (guild_id, date);
 `);
 
-// Migration: add `creator`/`creator_name` to a db file made by the v1 schema.
+// Migration: add columns to db files made by earlier schemas.
 (() => {
   const cols = db.prepare('PRAGMA table_info(game_nights)').all().map((c) => c.name);
+  const acols = db.prepare('PRAGMA table_info(game_attendees)').all().map((c) => c.name);
   const adds = [];
   if (!cols.includes('creator')) adds.push('ALTER TABLE game_nights ADD COLUMN creator TEXT');
   if (!cols.includes('creator_name')) adds.push('ALTER TABLE game_nights ADD COLUMN creator_name TEXT');
   if (!cols.includes('game')) adds.push('ALTER TABLE game_nights ADD COLUMN game TEXT');
+  if (!acols.includes('role')) adds.push("ALTER TABLE game_attendees ADD COLUMN role TEXT DEFAULT 'player'");
   if (adds.length) db.exec(adds.join(';'));
+
+  // Rebuild lies_and_deceit if it uses the old one-row-per-day primary key —
+  // strikes must stack even when declared multiple times on the same night.
+  const lcols = db.prepare('PRAGMA table_info(lies_and_deceit)').all().map((c) => c.name);
+  if (lcols.length && !lcols.includes('id')) {
+    db.exec(`
+      ALTER TABLE lies_and_deceit RENAME TO lies_and_deceit_legacy;
+      CREATE TABLE lies_and_deceit (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          guild_id         TEXT NOT NULL,
+          date             TEXT NOT NULL,
+          user_id          TEXT NOT NULL,
+          user_name        TEXT,
+          declared_by      TEXT,
+          declared_by_name TEXT,
+          reason           TEXT,
+          declared_at      TEXT NOT NULL
+      );
+      INSERT INTO lies_and_deceit
+          (guild_id, date, user_id, user_name, declared_by, declared_by_name, reason, declared_at)
+      SELECT guild_id, date, user_id, user_name, declared_by, declared_by_name, reason, declared_at
+        FROM lies_and_deceit_legacy;
+      DROP TABLE lies_and_deceit_legacy;
+    `);
+  }
 })();
 
 /* ---------------------------------------------------------------------- */
@@ -200,17 +228,19 @@ function remove(guildId, date) {
 /* game_attendees                                                         */
 /* ---------------------------------------------------------------------- */
 
-/** Upsert a player into tonight's roster with the time they'll appear. */
-function setAttendee(guildId, date, { user_id, user_name, time_ }) {
+/** Upsert a player (or watcher) into tonight's roster with the time they'll appear. */
+function setAttendee(guildId, date, { user_id, user_name, time_, role }) {
+  const safeRole = role === 'watcher' ? 'watcher' : 'player';
   db.prepare(
     `INSERT INTO game_attendees
-        (guild_id, date, user_id, user_name, join_time, joined_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+        (guild_id, date, user_id, user_name, join_time, role, joined_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(guild_id, date, user_id) DO UPDATE SET
         user_name = excluded.user_name,
         join_time = excluded.join_time,
+        role = excluded.role,
         joined_at = excluded.joined_at`,
-  ).run(guildId, date, user_id, user_name, time_ || null, manilaNow());
+  ).run(guildId, date, user_id, user_name, time_ || null, safeRole, manilaNow());
 }
 
 function getAttendees(guildId, date) {
@@ -219,6 +249,17 @@ function getAttendees(guildId, date) {
       'SELECT * FROM game_attendees WHERE guild_id = ? AND date = ? ORDER BY joined_at, rowid',
     )
     .all(guildId, date);
+}
+
+/** Split a roster into { players, watchers }. NULL/unknown role counts as player. */
+function splitAttendees(attendees) {
+  const players = [];
+  const watchers = [];
+  for (const a of attendees || []) {
+    if (a.role === 'watcher') watchers.push(a);
+    else players.push(a);
+  }
+  return { players, watchers };
 }
 
 function removeAttendee(guildId, date, user_id) {
@@ -272,19 +313,13 @@ function setGame(guildId, date, game) {
 /* Lies and Deceit — no-show tracking                                       */
 /* ---------------------------------------------------------------------- */
 
-/** Record (or update) a no-show for a teammate on a given game-night date. */
-function addNoShow(guildId, date, { user_id, user_name, declared_by, declared_by_name, reason }) {
+/** Record ONE no-show strike for a teammate (multiple strikes per day stack). */
+function addNoShow(guildId, date, { user_id, user_name, declared_by, declared_by_name }) {
   db.prepare(
     `INSERT INTO lies_and_deceit
-        (guild_id, date, user_id, user_name, declared_by, declared_by_name, reason, declared_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(guild_id, date, user_id) DO UPDATE SET
-        user_name = excluded.user_name,
-        declared_by = excluded.declared_by,
-        declared_by_name = excluded.declared_by_name,
-        reason = excluded.reason,
-        declared_at = excluded.declared_at`,
-  ).run(guildId, date, user_id, user_name, declared_by, declared_by_name, reason || null, manilaNow());
+        (guild_id, date, user_id, user_name, declared_by, declared_by_name, declared_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(guildId, date, user_id, user_name, declared_by, declared_by_name, manilaNow());
 }
 
 /** All no-shows recorded for a specific game-night date. */
@@ -313,7 +348,21 @@ function getAllNoShowCounts(guildId) {
        GROUP BY user_id, user_name
        ORDER BY count DESC, last_declared DESC`,
     )
-    .all(guildId);
+        .all(guildId);
+}
+
+/** Delete every lie record for one user in a guild. Returns rows removed. */
+function clearNoShows(guildId, userId) {
+  const res = db
+    .prepare('DELETE FROM lies_and_deceit WHERE guild_id = ? AND user_id = ?')
+    .run(guildId, userId);
+  return res.changes;
+}
+
+/** Wipe a guild's ENTIRE Hall of Shame. Returns rows removed. */
+function clearAllNoShows(guildId) {
+  const res = db.prepare('DELETE FROM lies_and_deceit WHERE guild_id = ?').run(guildId);
+  return res.changes;
 }
 
 module.exports = {
@@ -329,6 +378,7 @@ module.exports = {
   setGame,
   setAttendee,
   getAttendees,
+  splitAttendees,
   removeAttendee,
   clearAttendees,
   getActiveGameNights,
@@ -338,4 +388,6 @@ module.exports = {
   getNoShows,
   getNoShowCount,
   getAllNoShowCounts,
+  clearNoShows,
+  clearAllNoShows,
 };

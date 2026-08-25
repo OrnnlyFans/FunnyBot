@@ -31,14 +31,22 @@ module.exports = {
     .addStringOption((option) =>
       option
         .setName('reason')
-        .setDescription('Optional reason / note for the record')
+        .setDescription('Optional note shown just in this reply (not stored)')
+        .setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName('clear')
+        .setDescription('🧽 Clear records instead of adding (this user, or whole board if no user)')
         .setRequired(false),
     ),
 
   /**
-   * Two modes:
-   *  - `/lies user:@member [reason]` → host/admin declares a no-show for tonight.
-   *  - `/lies` (no user)             → shows the all-time Lies and Deceit leaderboard.
+   * Modes:
+   *  - `/lies user:@member [reason]`  → declare a strike (host/admin/trusted).
+   *  - `/lies`                        → all-time Hall of Shame leaderboard.
+   *  - `/lies user:@member clear:True`→ wipe ONE user's record (admin/trusted).
+   *  - `/lies clear:True`             → wipe the ENTIRE board (admin/trusted).
    */
   async execute(interaction) {
     const guildId = interaction.guildId;
@@ -52,8 +60,25 @@ module.exports = {
     const targetUser = interaction.options.getUser('user');
     const reason = interaction.options.getString('reason');
 
-    // ---- Leaderboard mode -------------------------------------------------
+    // ---- Leaderboard / wipe-all mode ---------------------------------------
     if (!targetUser) {
+      if (interaction.options.getBoolean('clear')) {
+        const mayWipe =
+          !!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
+          isTrustedLiesUser(interaction);
+        if (!mayWipe) {
+          return interaction.reply({
+            content: '🚫 Only server admins or trusted users can clear lie records.',
+            ephemeral: true,
+          });
+        }
+        const wiped = db.clearAllNoShows(guildId);
+        return interaction.reply({
+          content: `🧽 Wiped the entire Hall of Shame — ${wiped} record${wiped === 1 ? '' : 's'} gone.`,
+          ephemeral: true,
+        });
+      }
+
       const counts = db.getAllNoShowCounts(guildId);
       const embed = new EmbedBuilder()
         .setColor(COLORS.danger)
@@ -85,6 +110,21 @@ module.exports = {
       !!row && row.creator != null && String(row.creator) === String(interaction.user.id);
     const isTrusted = isTrustedLiesUser(interaction);
 
+    // ---- Clear-one-user mode ----------------------------------------------
+    if (interaction.options.getBoolean('clear')) {
+      if (!isAdmin && !isTrusted) {
+        return interaction.reply({
+          content: '🚫 Only server admins or trusted users can clear lie records.',
+          ephemeral: true,
+        });
+      }
+      const removed = db.clearNoShows(guildId, targetUser.id);
+      return interaction.reply({
+        content: `🧽 Cleared ${removed} lie record${removed === 1 ? '' : 's'} for <@${targetUser.id}>.`,
+        ephemeral: true,
+      });
+    }
+
     if (!isAdmin && !isHost && !isCreator && !isTrusted) {
       return interaction.reply({
         content: "🚫 Only tonight's host or a server admin can declare a no-show.",
@@ -113,7 +153,6 @@ module.exports = {
       user_name: memberName,
       declared_by: String(interaction.user.id),
       declared_by_name: interaction.user.username,
-      reason,
     });
 
     const count = db.getNoShowCount(guildId, targetUser.id);
@@ -122,13 +161,13 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.danger)
-      .setTitle('🎭 Lie Recorded!')
+      .setTitle('🎭 Lies and Deceit')
       .setDescription(
         `<@${targetUser.id}> said they'd appear${wasOnRoster ? '' : " _(not on tonight's roster, but noted)_"} — and didn't show.`,
       )
       .addFields(
         { name: '📅 Date', value: formatTodayLong(), inline: true },
-        { name: '🎭 Total Lies', value: String(count), inline: true },
+        { name: 'SMH', value: String(count), inline: true },
       );
     if (reason) embed.addFields({ name: '💬 Reason', value: reason });
     embed.setFooter({

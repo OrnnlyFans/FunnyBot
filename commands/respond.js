@@ -21,6 +21,7 @@ module.exports = {
         .addChoices(
           { name: '✅ Yes — We are playing (start game night)', value: 'yes' },
           { name: '🎮 Join — I am playing tonight', value: 'join' },
+          { name: '🍿 Watch — I will be there but not play', value: 'watch' },
           { name: '❌ No — Not playing tonight', value: 'no' },
           { name: '🚪 Leave — I cannot make it', value: 'leave' },
         ),
@@ -120,6 +121,36 @@ module.exports = {
       await interaction.reply({
         embeds: [notPlayingEmbed(user)],
         components: [],
+      });
+      await refreshGuildMessage(interaction.client, guildId, date);
+      return;
+    }
+
+        if (status === 'watch') {
+      if (!row || row.playing !== 1) {
+        return interaction.reply({
+          content: '🙅 Nobody has confirmed a game tonight yet — run **/tonight** first.',
+          ephemeral: true,
+        });
+      }
+      // Keep any arrival time they'd already declared (as player or watcher).
+      const prevW = db.getAttendees(guildId, date).find((a) => a.user_id === user.id);
+      const watchTime =
+        formattedTime ||
+        (prevW && prevW.join_time && prevW.join_time !== 'On Time' ? prevW.join_time : null);
+      db.setAttendee(guildId, date, {
+        user_id: user.id,
+        user_name: user.name,
+        time_: watchTime,
+        role: 'watcher',
+      });
+      row = db.get(guildId, date);
+      const setter = row && row.set_by ? { id: row.set_by, name: row.set_by_name } : user;
+      const attendees = db.getAttendees(guildId, date);
+      await interaction.reply({
+        content: `🍿 <@${user.id}> will be there to watch tonight's game!`,
+        embeds: [confirmedEmbed(row.time, setter, attendees, row.game)],
+        components: [gameRow(row.game), rosterRow()],
       });
       await refreshGuildMessage(interaction.client, guildId, date);
       return;

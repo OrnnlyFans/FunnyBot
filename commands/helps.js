@@ -31,11 +31,15 @@ module.exports = {
           value: 'Quickly join tonight\'s game roster (optional arrival time, e.g. `9:30 PM`).',
         },
         {
+          name: '🍿 `/watch [time]`',
+          value: 'Say you\'ll be there to **watch** but not play — you\'ll show up under the 🍿 Watching section (button on the message works too).',
+        },
+        {
           name: '🚪 `/leave`',
           value: 'Quickly leave tonight\'s game roster.',
         },
         {
-          name: '📝 `/respond status:[Yes/Join/No/Leave] [time]`',
+          name: '📝 `/respond status:[Yes/Join/Watch/No/Leave] [time]`',
           value: 'Full RSVP control with custom start or arrival times.',
         },
         {
@@ -56,7 +60,7 @@ module.exports = {
         },
         {
           name: '🎭 Lies and Deceit (/lies)',
-          value: "Said they'd show up but ghosted? The host or an admin records it with `/lies user:@member [reason]`. Run `/lies` alone for the all-time Hall of Shame leaderboard.",
+                    value: "Said they'd show up but ghosted? Host/admin records it with `/lies user:@member` — strikes stack, even same night! Admins/trusted: `/lies user:@member clear:True` wipes one person, `/lies clear:True` wipes the board. `/lies` alone = Hall of Shame.",
         },
         {
           name: '👑 Host Takeover & Succession',
