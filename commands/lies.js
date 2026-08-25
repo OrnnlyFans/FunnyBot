@@ -5,7 +5,7 @@ const { COLORS } = require('../gameMessage');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('no-show')
+    .setName('lies')
     .setDescription(
       "🎭 Lies and Deceit: declare who said they'd show but didn't — or view the leaderboard.",
     )
@@ -21,8 +21,8 @@ module.exports = {
 
   /**
    * Two modes:
-   *  - `/no-show user:@member [reason]` → host/admin declares a no-show for tonight.
-   *  - `/no-show` (no user)             → shows the all-time Lies and Deceit leaderboard.
+   *  - `/lies user:@member [reason]` → host/admin declares a no-show for tonight.
+   *  - `/lies` (no user)             → shows the all-time Lies and Deceit leaderboard.
    */
   async execute(interaction) {
     const guildId = interaction.guildId;
@@ -50,12 +50,12 @@ module.exports = {
       for (let i = 0; i < Math.min(counts.length, 15); i++) {
         const entry = counts[i];
         embed.addFields({
-          name: `#${i + 1} — ${entry.count} no-show${entry.count === 1 ? '' : 's'}`,
+          name: `#${i + 1} — ${entry.count} lie${entry.count === 1 ? '' : 's'}`,
           value: `<@${entry.user_id}> · last recorded ${entry.last_declared}`,
         });
       }
       embed.setFooter({
-        text: "Hosts & admins: /no-show user:@member to record tonight's liars.",
+        text: "Hosts & admins: /lies user:@member to record tonight's liars.",
       });
       return interaction.reply({ embeds: [embed] });
     }

@@ -55,8 +55,8 @@ module.exports = {
           value: 'Pings the squad ~10 minutes before game time, pings you personally around your declared arrival time, then checks in again ~10 minutes after start. Game night ALWAYS ends by 6:00 AM.',
         },
         {
-          name: '🎭 Lies and Deceit (/no-show)',
-          value: "Said they'd show up but ghosted? The host or an admin records it with `/no-show user:@member [reason]`. Run `/no-show` alone for the all-time Hall of Shame leaderboard.",
+          name: '🎭 Lies and Deceit (/lies)',
+          value: "Said they'd show up but ghosted? The host or an admin records it with `/lies user:@member [reason]`. Run `/lies` alone for the all-time Hall of Shame leaderboard.",
         },
         {
           name: '👑 Host Takeover & Succession',
