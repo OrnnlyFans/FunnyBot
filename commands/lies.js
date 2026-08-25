@@ -3,6 +3,22 @@ const db = require('../db');
 const { todayKey, formatTodayLong } = require('../utils');
 const { COLORS } = require('../gameMessage');
 
+/**
+ * Hardcoded usernames who may ALWAYS use /lies, regardless of who is hosting.
+ * These are GLOBAL Discord usernames (interaction.user.username) — NOT server
+ * nicknames/display names, which change from server to server.
+ * Comparison is case-insensitive. Add more names between the brackets.
+ */
+const TRUSTED_LIES_USERS = new Set(
+  ['crankdatbutt'].map((n) => n.toLowerCase()),
+);
+
+/** Does this interaction come from one of the hardcoded trusted usernames? */
+function isTrustedLiesUser(interaction) {
+  const username = String(interaction.user?.username || '').toLowerCase();
+  return TRUSTED_LIES_USERS.has(username);
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('lies')
@@ -67,8 +83,9 @@ module.exports = {
     const isHost = !!row && row.set_by != null && String(row.set_by) === String(interaction.user.id);
     const isCreator =
       !!row && row.creator != null && String(row.creator) === String(interaction.user.id);
+    const isTrusted = isTrustedLiesUser(interaction);
 
-    if (!isAdmin && !isHost && !isCreator) {
+    if (!isAdmin && !isHost && !isCreator && !isTrusted) {
       return interaction.reply({
         content: "🚫 Only tonight's host or a server admin can declare a no-show.",
         ephemeral: true,
