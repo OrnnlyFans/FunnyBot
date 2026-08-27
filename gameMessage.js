@@ -53,7 +53,7 @@ function setterLine(setter) {
 /** Human list of tonight's players: "@User — when they'll appear". */
 function participantsText(attendees = [], max = 15) {
   if (!attendees.length) return '_nobody has joined yet._';
-  const players = attendees.filter((a) => a.role !== 'watcher');
+  const players = attendees.filter((a) => a.role !== 'watcher' && a.role !== 'declined');
   const watchers = attendees.filter((a) => a.role === 'watcher');
 
   const lines = [];
@@ -162,8 +162,9 @@ function cancelledEmbed(cancelledBy, attendees = [], reason = null) {
   return embed;
 }
 
-/** /status output. Shows the yes/no, host time, and the player roster. */
-function statusEmbed(row, todayLong, attendees = []) {
+/** /status output. Shows the yes/no, host time, the player roster, and anyone who
+ *  declined a ping (said ❌ NO to the bot without cancelling the night). */
+function statusEmbed(row, todayLong, attendees = [], declined = []) {
   const embed = new EmbedBuilder()
     .setColor(COLORS.info)
     .setTitle('🎮 Tonight\'s Game')
@@ -194,6 +195,13 @@ function statusEmbed(row, todayLong, attendees = []) {
 
   if (row.playing === 1) {
     embed.addFields({ name: '👥 Squad', value: participantsText(attendees) });
+
+    if (declined && declined.length > 0) {
+      embed.addFields({
+        name: '🙅 Said No to ping',
+        value: declined.map((d) => `<@${d.user_id}>`).join('\n'),
+      });
+    }
   }
 
   return embed;
@@ -374,7 +382,9 @@ function dmTimeRow(guildId, date) {
   return row;
 }
 
-/** DM version of Join/Leave buttons with embedded guildId and date. */
+/** DM version of Join/Leave/Watch + a per-person ❌ NO (decline) button.
+ *  Declining marks the teammate as 'declined' in the roster so /status can show
+ *  they said no — without cancelling the server-wide game night. */
 function dmRosterRow(guildId, date) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -389,6 +399,10 @@ function dmRosterRow(guildId, date) {
       .setCustomId(`dm_join_watch:${guildId}:${date}`)
       .setLabel('🍿 Watch')
       .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`dm_decline:${guildId}:${date}`)
+      .setLabel('❌ NO')
+      .setStyle(ButtonStyle.Danger),
   );
 }
 

@@ -24,7 +24,7 @@ module.exports = {
         },
         {
           name: '🔔 `/ping user:@member [message]`',
-          value: 'Send a DM to a teammate with interactive **Yes/No/Join/Leave** buttons directly inside their DM.',
+          value: 'Send a DM to a teammate with interactive **Yes/No** (if pending) or **Join/Leave/Watch/No** (if confirmed) buttons directly inside their DM. Tapping ❌ NO on a confirmed game marks them as declined — visible in `/status`.',
         },
         {
           name: '🎮 `/join [time]`',

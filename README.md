@@ -38,7 +38,7 @@ recorded, `/status` shows it and `/tonight` will no longer re-post a prompt
 | ---------- | --------------------------------------------------------------- |
 | `/tonight` | Posts (or refreshes) the interactive "are we playing?" prompt.  |
 | `/status`  | Shows tonight's stored answer (Yes/No, time, who set it).        |
-| `/ping`    | DMs a teammate asking if they're playing with the server status.|
+| `/ping`    | DMs a teammate asking if they're playing with the server status. Tapping ❌ NO on a confirmed game marks them as declined — shown in `/status`.|
 | `/cancel`  | Clears tonight's game night and marks the message as cancelled.  |
 | `/join`    | Join tonight's player roster (optional arrival time).            |
 | `/watch`   | 🍿 Say you'll be there to watch, not play (or use the button).   |
@@ -54,6 +54,9 @@ re-open the night without retyping `/tonight`.
   Party / Any** buttons appear on the message (in the server *and* in DMs).
 - ⏰ **Pings** — ~10 minutes before start, a personal ping at your declared
   arrival time, and a check-in ~10 minutes after start.
+- 🙅 **Declining a ping** — when you're pinged for a *confirmed* game, the ❌ NO
+  button lets you say "can't make it" without cancelling the night for everyone.
+  `/status` shows everyone who said No to the bot.
 - 🌅 **Hard stop at 6 AM** — no pings are ever sent after 6:00 AM Manila time;
   game night always ends there regardless of when it started.
 - 🎭 **Lies and Deceit** — the host or an admin runs `/lies user:@member`

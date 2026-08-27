@@ -18,10 +18,12 @@ module.exports = {
       return;
     }
 
-    const row = db.get(guildId, todayKey());
-    const attendees = db.getAttendees(guildId, todayKey());
+    const date = todayKey();
+    const row = db.get(guildId, date);
+    const attendees = db.getAttendees(guildId, date);
+    const declined = db.getDeclined(guildId, date);
     await interaction.reply({
-      embeds: [statusEmbed(row, formatTodayLong(), attendees)],
+      embeds: [statusEmbed(row, formatTodayLong(), attendees, declined)],
     });
   },
 };

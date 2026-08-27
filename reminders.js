@@ -31,11 +31,11 @@ async function checkReminders(client) {
         if (diffMinutes <= 10 && diffMinutes >= -15) {
           if (!db.hasReminderBeenSent(guildId, date, 'guild_main', 'start_soon')) {
             db.recordReminder(guildId, date, 'guild_main', 'start_soon');
-
             // Collect unique user IDs to ping
             const userIds = new Set();
             if (game.set_by) userIds.add(game.set_by);
             for (const a of attendees) {
+              if (a.role === 'declined') continue;
               if (a.user_id) userIds.add(a.user_id);
             }
 

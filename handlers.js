@@ -260,6 +260,26 @@ async function handleButton(interaction) {
         break;
       }
 
+      case 'dm_decline': {
+        if (db.get(guildId, targetDate)?.playing !== 1) {
+          await interaction
+            .reply({ content: '🙅 The game was cleared since this DM was sent.', ephemeral: true })
+            .catch(() => {});
+          break;
+        }
+        db.setAttendee(guildId, targetDate, {
+          user_id: setter.id,
+          user_name: setter.name,
+          role: 'declined',
+        });
+        const opts = dmConfirmedOptions(guildId, targetDate);
+        opts.content =
+          '🙅 You\'ve declined for tonight. The game is still **ON** — tap **Join** below if you change your mind!';
+        await interaction.update(opts);
+        await refreshGuildMessage(interaction.client, guildId, targetDate);
+        break;
+      }
+
       default:
         await interaction
           .update({ content: 'Unknown button.', components: [] })

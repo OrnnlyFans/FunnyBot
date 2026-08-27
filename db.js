@@ -228,9 +228,10 @@ function remove(guildId, date) {
 /* game_attendees                                                         */
 /* ---------------------------------------------------------------------- */
 
-/** Upsert a player (or watcher) into tonight's roster with the time they'll appear. */
+/** Upsert a player (or watcher) into tonight's roster with the time they'll appear.
+ *  `role` may be 'player' (default), 'watcher', or 'declined' (pinged but opting out). */
 function setAttendee(guildId, date, { user_id, user_name, time_, role }) {
-  const safeRole = role === 'watcher' ? 'watcher' : 'player';
+  const safeRole = role === 'watcher' ? 'watcher' : role === 'declined' ? 'declined' : 'player';
   db.prepare(
     `INSERT INTO game_attendees
         (guild_id, date, user_id, user_name, join_time, role, joined_at)
@@ -251,15 +252,26 @@ function getAttendees(guildId, date) {
     .all(guildId, date);
 }
 
-/** Split a roster into { players, watchers }. NULL/unknown role counts as player. */
+/** Just the teammate(s) who tapped ❌ NO on a ping DM for a confirmed game (role = 'declined'). */
+function getDeclined(guildId, date) {
+  return db
+    .prepare(
+      'SELECT * FROM game_attendees WHERE guild_id = ? AND date = ? AND role = ? ORDER BY joined_at, rowid',
+    )
+    .all(guildId, date, 'declined');
+}
+
+/** Split a roster into { players, watchers, declined }. NULL/unknown role counts as player. */
 function splitAttendees(attendees) {
   const players = [];
   const watchers = [];
+  const declined = [];
   for (const a of attendees || []) {
     if (a.role === 'watcher') watchers.push(a);
+    else if (a.role === 'declined') declined.push(a);
     else players.push(a);
   }
-  return { players, watchers };
+  return { players, watchers, declined };
 }
 
 function removeAttendee(guildId, date, user_id) {
@@ -376,8 +388,9 @@ module.exports = {
   resetToPending,
   remove,
   setGame,
-  setAttendee,
+    setAttendee,
   getAttendees,
+  getDeclined,
   splitAttendees,
   removeAttendee,
   clearAttendees,
